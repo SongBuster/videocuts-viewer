@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VideoCuts — Estadísticas</title>
+<link rel="stylesheet" href="assets/app.css" />
+</head>
+<body>
+  <header class="site-header">
+    <h1>📊 VideoCuts</h1>
+    <span class="meta">Cortes y estadísticas de los partidos analizados</span>
+    <span class="spacer"></span>
+    <a class="nav-link" href="estadisticas.html">Ver estadísticas combinadas →</a>
+  </header>
+  <div class="home-wrap">
+    <p class="intro">Elige un partido para ver sus estadísticas y revisar los cortes con el vídeo, o entra en las estadísticas combinadas para ver todos los partidos publicados a la vez.</p>
+    <div id="matches" class="match-grid"></div>
+  </div>
+
+<script type="module">
+  import { fetchJSON, escapeHtml, formatDateEs } from './assets/app.js'
+
+  const el = document.getElementById('matches')
+  try {
+    const index = await fetchJSON('data/index.json')
+    if (index.length === 0) {
+      el.innerHTML = '<div class="empty-state">Todavía no se ha publicado ningún partido.</div>'
+    } else {
+      el.innerHTML = index.map((m) => `
+        <a class="match-card" href="partido.html?id=${encodeURIComponent(m.id)}">
+          <div class="name">${escapeHtml(m.matchName)}</div>
+          <div class="sub">${[formatDateEs(m.date), m.competition, [m.homeTeam, m.awayTeam].filter(Boolean).join(' vs ')].filter(Boolean).map(escapeHtml).join(' · ')}</div>
+          <div class="figures">
+            <span><b>${m.totalEvents}</b> jugadas</span>
+            <span><b>${m.playableClips}</b> con vídeo</span>
+          </div>
+        </a>`).join('')
+    }
+  } catch (err) {
+    el.innerHTML = `<div class="empty-state">No se ha podido cargar el listado de partidos.<br>${escapeHtml(err.message)}</div>`
+  }
+</script>
+</body>
+</html>

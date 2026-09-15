@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Estadísticas combinadas — VideoCuts</title>
+<link rel="stylesheet" href="assets/app.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="back" href="index.html">← Partidos</a>
+    <h1>Estadísticas combinadas</h1>
+    <span class="meta" id="matchMeta"></span>
+  </header>
+  <div id="app"></div>
+
+<script type="module">
+  import { fetchJSON, mountMatchApp } from './assets/app.js'
+
+  const app = document.getElementById('app')
+  try {
+    const index = await fetchJSON('data/index.json')
+    if (index.length === 0) {
+      app.innerHTML = '<div class="empty-state">Todavía no se ha publicado ningún partido.</div>'
+    } else {
+      const matches = await Promise.all(index.map((m) => fetchJSON(`data/${encodeURIComponent(m.id)}.json`)))
+      document.getElementById('matchMeta').textContent = `${matches.length} partido${matches.length === 1 ? '' : 's'} publicado${matches.length === 1 ? '' : 's'}`
+      const events = matches.flatMap((data) => data.events.map((e) => ({ ...e, matchId: data.id, matchName: data.matchName })))
+      mountMatchApp(app, { events, showMatchFilter: true })
+    }
+  } catch (err) {
+    app.innerHTML = `<div class="empty-state">No se han podido cargar los partidos.<br>${err.message}</div>`
+  }
+</script>
+</body>
+</html>

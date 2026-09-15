@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Partido — VideoCuts</title>
+<link rel="stylesheet" href="assets/app.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="back" href="index.html">← Partidos</a>
+    <h1 id="matchName">Cargando…</h1>
+    <span class="meta" id="matchMeta"></span>
+    <span class="spacer"></span>
+    <a class="nav-link" href="estadisticas.html">Ver estadísticas combinadas →</a>
+  </header>
+  <div id="app"></div>
+
+<script type="module">
+  import { fetchJSON, formatDateEs, mountMatchApp } from './assets/app.js'
+
+  const params = new URLSearchParams(location.search)
+  const id = params.get('id')
+  const app = document.getElementById('app')
+
+  if (!id) {
+    document.getElementById('matchName').textContent = 'Falta el partido'
+    app.innerHTML = '<div class="empty-state">Esta página necesita un ?id=... en la URL. Entra desde el listado de partidos.</div>'
+  } else {
+    try {
+      const data = await fetchJSON(`data/${encodeURIComponent(id)}.json`)
+      document.title = `${data.matchName} — VideoCuts`
+      document.getElementById('matchName').textContent = data.matchName || 'Partido'
+      document.getElementById('matchMeta').textContent =
+        [formatDateEs(data.date), data.competition, [data.homeTeam, data.awayTeam].filter(Boolean).join(' vs ')]
+          .filter(Boolean).join(' · ')
+      const events = data.events.map((e) => ({ ...e, matchName: data.matchName }))
+      mountMatchApp(app, { events, showMatchFilter: false })
+    } catch (err) {
+      document.getElementById('matchName').textContent = 'No encontrado'
+      app.innerHTML = `<div class="empty-state">No se ha podido cargar este partido.<br>${err.message}</div>`
+    }
+  }
+</script>
+</body>
+</html>
