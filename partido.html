@@ -21,6 +21,7 @@
 
   const params = new URLSearchParams(location.search)
   const id = params.get('id')
+  const initialEventId = params.get('evento')
   const app = document.getElementById('app')
 
   if (!id) {
@@ -35,7 +36,7 @@
         [formatDateEs(data.date), data.competition, [data.homeTeam, data.awayTeam].filter(Boolean).join(' vs ')]
           .filter(Boolean).join(' · ')
       const events = data.events.map((e) => ({ ...e, matchName: data.matchName }))
-      mountMatchApp(app, { events, showMatchFilter: false })
+      mountMatchApp(app, { events, showMatchFilter: false, initialEventId })
     } catch (err) {
       document.getElementById('matchName').textContent = 'No encontrado'
       app.innerHTML = `<div class="empty-state">No se ha podido cargar este partido.<br>${err.message}</div>`

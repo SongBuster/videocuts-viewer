@@ -17,6 +17,8 @@
 <script type="module">
   import { fetchJSON, mountMatchApp } from './assets/app.js'
 
+  const params = new URLSearchParams(location.search)
+  const initialEventId = params.get('evento')
   const app = document.getElementById('app')
   try {
     const index = await fetchJSON('data/index.json')
@@ -26,7 +28,7 @@
       const matches = await Promise.all(index.map((m) => fetchJSON(`data/${encodeURIComponent(m.id)}.json`)))
       document.getElementById('matchMeta').textContent = `${matches.length} partido${matches.length === 1 ? '' : 's'} publicado${matches.length === 1 ? '' : 's'}`
       const events = matches.flatMap((data) => data.events.map((e) => ({ ...e, matchId: data.id, matchName: data.matchName })))
-      mountMatchApp(app, { events, showMatchFilter: true })
+      mountMatchApp(app, { events, showMatchFilter: true, initialEventId })
     }
   } catch (err) {
     app.innerHTML = `<div class="empty-state">No se han podido cargar los partidos.<br>${err.message}</div>`

@@ -50,7 +50,7 @@ function uniqueSortedFlat(events, pickList, fallback) {
 // ─── App de un partido o de varios partidos combinados ────────────────────────
 // `events` ya viene normalizado (ver matchExport.ts en la app): cada evento
 // trae su propio matchId/matchName cuando se combinan varios partidos.
-export function mountMatchApp(root, { events, showMatchFilter }) {
+export function mountMatchApp(root, { events, showMatchFilter, initialEventId }) {
   const filters = { text: '', types: [], outcomes: [], periods: [], teams: [], players: [], zones: [], goalZones: [], matches: [] }
 
   root.innerHTML = `
@@ -250,6 +250,21 @@ export function mountMatchApp(root, { events, showMatchFilter }) {
   })
 
   rerender()
+
+  // Enlace directo a un corte concreto (?evento=<id>), p.ej. desde una
+  // tabla de Looker Studio: lo selecciona y lo deja centrado en la lista,
+  // igual que si se hubiera hecho clic a mano.
+  if (initialEventId) {
+    const e = events.find((ev) => ev.id === initialEventId)
+    if (e) {
+      selectClip(e)
+      rerender()
+      requestAnimationFrame(() => {
+        const row = root.querySelector('.clip-row[data-id="' + e.id + '"]')
+        if (row) row.scrollIntoView({ block: 'center' })
+      })
+    }
+  }
 }
 
 export { SHOT_ZONES, GOAL_LABELS }
