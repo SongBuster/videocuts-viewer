@@ -20,7 +20,7 @@
   header a.back:hover { color: #ccc; }
   header .match-name { color: #aaa; font-size: 13px; }
   header .meta { color: #555; font-size: 12px; }
-  main { max-width: 860px; margin: 0 auto; padding: 24px 20px 50px; display: flex; flex-direction: column; gap: 18px; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 50px; display: flex; flex-direction: column; gap: 18px; }
 
   .title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .badge { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
@@ -44,9 +44,15 @@
   .notes { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 14px 20px; color: #ccc; font-size: 13px; line-height: 1.5; }
   .notes .label { color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
 
-  .links { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; }
+  .links { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; font-size: 13px; }
   .links a { text-decoration: none; }
   .links a:hover { text-decoration: underline; }
+  .replay-btn {
+    background: #3b82f6; color: #fff; border: none; border-radius: 8px;
+    padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .replay-btn:hover { background: #2563eb; }
+  .replay-hint { color: #666; font-size: 12px; }
 
   .empty-state { color: #666; font-size: 14px; text-align: center; padding: 60px 20px; }
 </style>
@@ -107,7 +113,7 @@
             <h1>${escapeHtml(e.type)}</h1>
             ${e.outcome ? `<span class="outcome">${escapeHtml(e.outcome)}</span>` : ''}
           </div>
-          <div class="player-wrap">${playerHtml}</div>
+          <div class="player-wrap" id="playerWrap">${playerHtml}</div>
           <div class="info-grid">
             ${fields.map(([label, value]) => `
               <div class="field">
@@ -117,9 +123,18 @@
           </div>
           ${e.notes ? `<div class="notes"><div class="label">Notas</div>${escapeHtml(e.notes)}</div>` : ''}
           <div class="links">
-            <a href="partido.html?id=${encodeURIComponent(matchId)}&evento=${encodeURIComponent(eventId)}">↩ Ver este partido completo</a>
+            ${e.youtubeId ? `
+              <button class="replay-btn" id="replayBtn">🔁 Volver a ver el corte</button>
+              <span class="replay-hint">YouTube tapa el vídeo con sus controles los primeros segundos — repítelo si no te ha dado tiempo a verlo</span>
+            ` : ''}
             ${e.youtubeId ? `<a href="https://youtu.be/${e.youtubeId}?t=${Math.max(0, Math.floor(e.start))}s" target="_blank" rel="noopener">Abrir en YouTube ↗</a>` : ''}
           </div>`
+
+        if (e.youtubeId) {
+          document.getElementById('replayBtn').addEventListener('click', () => {
+            document.getElementById('playerWrap').innerHTML = playerHtml
+          })
+        }
       }
     } catch (err) {
       showError('No se ha podido cargar este partido. ' + err.message)
