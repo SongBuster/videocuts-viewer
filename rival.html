@@ -12,9 +12,32 @@
     color: #888; padding: 12px 6px; font-size: 13px; cursor: pointer;
   }
   .tab-btn.active { color: #fff; border-bottom-color: #3b82f6; }
-  .tab-panel { padding: 24px 20px; }
-  .aux-text { color: #888; font-size: 13px; margin-top: 14px; }
-  .filters-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .tab-panel { min-height: 0; }
+  .aux-text { color: #888; font-size: 13px; }
+
+  /* ── Filtros (izquierda) + visualizadores (derecha) ── */
+  .dash-layout { display: flex; align-items: flex-start; }
+  .dash-filters {
+    width: 280px; flex-shrink: 0; border-right: 1px solid #2a2a2a;
+    padding: 18px 16px; display: flex; flex-direction: column; gap: 14px;
+    box-sizing: border-box;
+  }
+  .dash-filters-title { color: #aaa; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  .filters-col { display: flex; flex-direction: column; gap: 10px; }
+  .filters-col .dd-filter { display: block; }
+  .filters-col .dd-filter-btn { width: 100%; box-sizing: border-box; justify-content: space-between; }
+  .dash-main { flex: 1; min-width: 0; padding: 20px; }
+  .filters-toggle { display: none; }
+
+  @media (max-width: 860px) {
+    .dash-layout { flex-direction: column; }
+    .filters-toggle {
+      display: block; width: 100%; text-align: left; background: #1a1a1a; border: none;
+      border-bottom: 1px solid #2a2a2a; color: #ccc; padding: 12px 20px; font-size: 13px; cursor: pointer;
+    }
+    .dash-filters { width: 100%; border-right: none; border-bottom: 1px solid #2a2a2a; box-sizing: border-box; }
+    .dash-filters:not(.open) { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -35,6 +58,7 @@
   import { createDropdownFilter } from './assets/dropdown-filter.js'
 
   const COL_PLAYER = 'Jugador'
+  const COL_CODE = 'Codigo'
 
   const params = new URLSearchParams(location.search)
   const team = params.get('equipo')
@@ -68,25 +92,46 @@
       } else {
         const datasets = await Promise.all(jugadoresEntries.map((e) => fetchJSON(`data/lanzamientos/${e.id}.json`)));
         const records = datasets.flatMap((d) => d.records);
-        const jornadas = jugadoresEntries.map((e) => e.code).join(', ');
 
         panels.jugadores.innerHTML = `
-          <div class="filters-row" id="filtersRow"></div>
-          <p class="aux-text" id="auxText"></p>`;
+          <button type="button" class="filters-toggle" id="filtersToggle">☰ Filtros</button>
+          <div class="dash-layout">
+            <aside class="dash-filters" id="dashFilters">
+              <div class="dash-filters-title">Filtros</div>
+              <div class="filters-col" id="filtersCol"></div>
+            </aside>
+            <main class="dash-main">
+              <p class="aux-text" id="auxText"></p>
+            </main>
+          </div>`;
 
-        const playerValues = [...new Set(records.map((r) => r[COL_PLAYER]).filter(Boolean))].sort();
-        const playerFilter = createDropdownFilter({
-          fieldLabel: 'Jugador',
-          options: playerValues.map((v) => ({ value: v, label: v })),
-          onChange: () => renderAuxText()
+        document.getElementById('filtersToggle').addEventListener('click', () => {
+          document.getElementById('dashFilters').classList.toggle('open');
         });
-        document.getElementById('filtersRow').appendChild(playerFilter.el);
+
+        const filtersCol = document.getElementById('filtersCol');
+        const activeFilters = {}
+
+        function addFilter(fieldLabel, column) {
+          const values = [...new Set(records.map((r) => r[column]).filter(Boolean))].sort();
+          const filter = createDropdownFilter({
+            fieldLabel,
+            options: values.map((v) => ({ value: v, label: v })),
+            onChange: (selected) => { activeFilters[column] = selected; renderAuxText(); }
+          });
+          activeFilters[column] = [];
+          filtersCol.appendChild(filter.el);
+        }
+
+        addFilter('Partido', COL_CODE);
+        addFilter('Jugador', COL_PLAYER);
 
         function renderAuxText() {
-          const selected = playerFilter.getSelected();
-          const filtered = selected.length === 0 ? records : records.filter((r) => selected.includes(r[COL_PLAYER]));
+          const filtered = records.filter((r) =>
+            Object.entries(activeFilters).every(([col, sel]) => sel.length === 0 || sel.includes(r[col]))
+          );
           document.getElementById('auxText').textContent =
-            `${filtered.length} de ${records.length} eventos (jornadas: ${jornadas}) — de prueba, mientras decidimos qué mostrar aquí.`;
+            `${filtered.length} de ${records.length} eventos — de prueba, mientras decidimos qué mostrar aquí.`;
         }
         renderAuxText();
       }
