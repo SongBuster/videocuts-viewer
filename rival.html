@@ -200,6 +200,30 @@
           filtersCol.appendChild(phaseFilter.el);
         }
 
+        // Tipo de lanzamiento: distingue los lanzamientos de 7 metros (sin
+        // oposición real, efectividad muy distinta) de los de juego. Sin
+        // buscador y ordenado por frecuencia, igual que Fase de juego.
+        const COL_EVENT_TYPE = 'Tipo de evento';
+        const EVENT_TYPE_LABELS = { 'Lanzamiento': 'Juego', 'Lanzamiento 7M': '7 metros' };
+        const eventTypeCounts = new Map();
+        for (const r of records) {
+          const v = r[COL_EVENT_TYPE];
+          if (v) eventTypeCounts.set(v, (eventTypeCounts.get(v) || 0) + 1);
+        }
+        const eventTypeOptions = [...eventTypeCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([value]) => ({ value, label: EVENT_TYPE_LABELS[value] || value }));
+        if (eventTypeOptions.length > 1) {
+          const eventTypeFilter = createDropdownFilter({
+            fieldLabel: 'Tipo de lanzamiento',
+            options: eventTypeOptions,
+            showSearch: false,
+            onChange: (selected) => { activeFilters.tipoEvento.selected = selected; renderStats(); }
+          });
+          activeFilters.tipoEvento = { getValue: (r) => r[COL_EVENT_TYPE], selected: [] };
+          filtersCol.appendChild(eventTypeFilter.el);
+        }
+
         // Zona de lanzamiento y zona de portería no tienen desplegable propio
         // en la columna de filtros: se activan solo al pulsar sobre el
         // gráfico correspondiente (ver toggleZoneFilter/toggleGoalZoneFilter).
