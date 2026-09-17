@@ -128,3 +128,37 @@ button { font-family: inherit; }
   .app-layout { flex-direction: column; }
   .app-sidebar { width: 100%; position: static; min-height: 60vh; border-left: none; border-top: 1px solid #2a2a2a; }
 }
+
+/* ── Filtro desplegable multi-selección (estilo Looker Studio) ── */
+.dd-filter { position: relative; display: inline-block; }
+.dd-filter-btn {
+  background: #1a1a1a; border: 1px solid #333; color: #ccc; border-radius: 6px;
+  padding: 7px 14px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px;
+}
+.dd-filter-btn:hover { border-color: #555; }
+.dd-filter-btn.active { border-color: #3b82f6; background: #16223a; color: #cfe0ff; }
+.dd-filter-btn::after { content: '▾'; color: #666; font-size: 10px; }
+.dd-filter-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 50; width: 260px;
+  background: #1e1e1e; border: 1px solid #383838; border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.5); padding: 8px; display: flex; flex-direction: column; gap: 4px;
+}
+.dd-filter-search {
+  background: #111; border: 1px solid #333; border-radius: 5px; color: #e0e0e0;
+  padding: 6px 9px; font-size: 12px; outline: none; margin-bottom: 4px;
+}
+.dd-filter-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 6px; border-radius: 5px;
+  cursor: pointer; font-size: 12px; color: #ddd; position: relative;
+}
+.dd-filter-row:hover { background: #2a2a2a; }
+.dd-filter-row input[type=checkbox] { flex-shrink: 0; cursor: pointer; }
+.dd-filter-row-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd-filter-allrow { border-bottom: 1px solid #333; border-radius: 0; padding-bottom: 8px; margin-bottom: 2px; color: #999; }
+.dd-filter-only {
+  display: none; flex-shrink: 0; background: #2a3a52; color: #9ab8f0; border: none;
+  border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 600; letter-spacing: .02em; cursor: pointer;
+}
+.dd-filter-row:hover .dd-filter-only { display: inline-block; }
+.dd-filter-list { max-height: 260px; overflow-y: auto; }
+.dd-filter-empty { color: #555; font-size: 12px; padding: 10px 6px; text-align: center; }

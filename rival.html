@@ -13,7 +13,8 @@
   }
   .tab-btn.active { color: #fff; border-bottom-color: #3b82f6; }
   .tab-panel { padding: 24px 20px; }
-  .aux-text { color: #888; font-size: 13px; }
+  .aux-text { color: #888; font-size: 13px; margin-top: 14px; }
+  .filters-row { display: flex; gap: 10px; flex-wrap: wrap; }
 </style>
 </head>
 <body>
@@ -31,6 +32,9 @@
 
 <script type="module">
   import { fetchJSON, escapeHtml } from './assets/app.js'
+  import { createDropdownFilter } from './assets/dropdown-filter.js'
+
+  const COL_PLAYER = 'Jugador'
 
   const params = new URLSearchParams(location.search)
   const team = params.get('equipo')
@@ -63,9 +67,28 @@
         panels.jugadores.innerHTML = '<div class="empty-state">Sin datos de jugadores para este rival todavía.</div>';
       } else {
         const datasets = await Promise.all(jugadoresEntries.map((e) => fetchJSON(`data/lanzamientos/${e.id}.json`)));
-        const totalRows = datasets.reduce((acc, d) => acc + d.records.length, 0);
+        const records = datasets.flatMap((d) => d.records);
         const jornadas = jugadoresEntries.map((e) => e.code).join(', ');
-        panels.jugadores.innerHTML = `<p class="aux-text">${totalRows} eventos cargados (jornadas: ${escapeHtml(jornadas)}) — de prueba, mientras decidimos qué mostrar aquí.</p>`;
+
+        panels.jugadores.innerHTML = `
+          <div class="filters-row" id="filtersRow"></div>
+          <p class="aux-text" id="auxText"></p>`;
+
+        const playerValues = [...new Set(records.map((r) => r[COL_PLAYER]).filter(Boolean))].sort();
+        const playerFilter = createDropdownFilter({
+          fieldLabel: 'Jugador',
+          options: playerValues.map((v) => ({ value: v, label: v })),
+          onChange: () => renderAuxText()
+        });
+        document.getElementById('filtersRow').appendChild(playerFilter.el);
+
+        function renderAuxText() {
+          const selected = playerFilter.getSelected();
+          const filtered = selected.length === 0 ? records : records.filter((r) => selected.includes(r[COL_PLAYER]));
+          document.getElementById('auxText').textContent =
+            `${filtered.length} de ${records.length} eventos (jornadas: ${jornadas}) — de prueba, mientras decidimos qué mostrar aquí.`;
+        }
+        renderAuxText();
       }
 
       // Portero: de momento, deliberadamente sin contenido.
