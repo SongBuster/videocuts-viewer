@@ -60,6 +60,15 @@
   const COL_PLAYER = 'Jugador'
   const COL_CODE = 'Codigo'
 
+  // El CSV trae "#33 NOMBRE" — para el desplegable interesa ordenar por
+  // dorsal numérico (no como texto: "#10" iría antes que "#2") y sin el "#",
+  // que no aporta nada y ocupa espacio.
+  function parsePlayer(raw) {
+    const m = raw.match(/^#(\d+)\s*(.*)$/)
+    if (!m) return { dorsal: Infinity, label: raw }
+    return { dorsal: Number(m[1]), label: `${m[1]} ${m[2]}`.trim() }
+  }
+
   const params = new URLSearchParams(location.search)
   const team = params.get('equipo')
   const teamNameEl = document.getElementById('teamName')
@@ -137,7 +146,17 @@
         activeFilters.tiempo = { getValue: (r) => computeTimeBucketKey(r), selected: [] };
         filtersCol.appendChild(timeFilter.el);
 
-        addFilter('jugador', 'Jugador', COL_PLAYER);
+        const playerOptions = [...new Set(records.map((r) => r[COL_PLAYER]).filter(Boolean))]
+          .map((raw) => ({ value: raw, ...parsePlayer(raw) }))
+          .sort((a, b) => a.dorsal - b.dorsal)
+          .map(({ value, label }) => ({ value, label }));
+        const playerFilter = createDropdownFilter({
+          fieldLabel: 'Jugador',
+          options: playerOptions,
+          onChange: (selected) => { activeFilters.jugador.selected = selected; renderAuxText(); }
+        });
+        activeFilters.jugador = { getValue: (r) => r[COL_PLAYER], selected: [] };
+        filtersCol.appendChild(playerFilter.el);
 
         function renderAuxText() {
           const filtered = records.filter((r) =>
