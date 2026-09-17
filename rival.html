@@ -198,14 +198,30 @@
           filtersCol.appendChild(phaseFilter.el);
         }
 
+        // Zona de lanzamiento y zona de portería no tienen desplegable propio
+        // en la columna de filtros: se activan solo al pulsar sobre el
+        // gráfico correspondiente (ver toggleZoneFilter/toggleGoalZoneFilter).
+        activeFilters.zonaLanzamiento = { getValue: (r) => parseZoneCode(r[COL_POSITION]), selected: [] };
+        activeFilters.zonaPorteria = { getValue: (r) => GOAL_LABEL_TO_CODE[r[COL_GOAL]] || null, selected: [] };
+
         function figure(n, label) {
           return `<div class="figure"><span class="n">${n}</span><span class="l">${label}</span></div>`;
         }
 
-        function renderStats() {
-          const filtered = records.filter((r) =>
-            Object.values(activeFilters).every(({ getValue, selected }) => selected.length === 0 || selected.includes(getValue(r)))
+        // Registros que cumplen todos los filtros activos EXCEPTO los
+        // indicados — así el propio gráfico que actúa como filtro (jugador,
+        // zona de lanzamiento, zona de portería) sigue mostrando todos sus
+        // elementos y se puede volver a pulsar para deseleccionar.
+        function filteredExcept(...excludeKeys) {
+          return records.filter((r) =>
+            Object.entries(activeFilters).every(([key, { getValue, selected }]) =>
+              excludeKeys.includes(key) || selected.length === 0 || selected.includes(getValue(r))
+            )
           );
+        }
+
+        function renderStats() {
+          const filtered = filteredExcept();
 
           const lanzamientos = filtered.length;
           const goles = filtered.filter((r) => /gol/i.test(r['Resultado'] || '')).length;
@@ -220,9 +236,9 @@
             figure(`${efectividad}%`, 'efectividad') +
             figure(golesPorPartidoLabel, 'goles por partido');
 
-          renderPlayerComparison(filtered);
-          renderZonePositionChart(filtered);
-          renderGoalZoneChart(filtered);
+          renderPlayerComparison(filteredExcept('jugador'));
+          renderZonePositionChart(filteredExcept('zonaLanzamiento'));
+          renderGoalZoneChart(filteredExcept('zonaPorteria'));
         }
 
         // ── Comparativa de jugadores: solo tiene sentido con más de uno a la
@@ -250,6 +266,7 @@
             .map(([raw, { lanzamientos, goles }]) => {
               const { dorsal, label } = parsePlayer(raw);
               return {
+                raw,
                 fullLabel: label,
                 dorsalLabel: String(dorsal),
                 lanzamientos,
@@ -260,6 +277,21 @@
             .sort((a, b) => b.lanzamientos - a.lanzamientos);
 
           document.getElementById('playerComparisonChart').innerHTML = buildPlayerComparisonSVG(players);
+
+          document.querySelectorAll('#playerComparisonChart .player-bar-group').forEach((g) => {
+            g.addEventListener('click', () => togglePlayerFilter(g.dataset.player));
+          });
+        }
+
+        // Pulsar la barra de un jugador lo deja como único filtro de Jugador
+        // (y se refleja también en el desplegable); pulsar el mismo de nuevo
+        // vuelve a "todos" — igual que el botón SOLO de los desplegables.
+        function togglePlayerFilter(raw) {
+          const cur = activeFilters.jugador.selected;
+          const next = (cur.length === 1 && cur[0] === raw) ? [] : [raw];
+          activeFilters.jugador.selected = next;
+          playerFilter.setSelected(next);
+          renderStats();
         }
 
         function buildPlayerComparisonSVG(players) {
@@ -286,10 +318,12 @@
             gridSvg += `<text x="${marginLeft - 6}" y="${y}" text-anchor="end" dominant-baseline="middle" fill="${TEXT_MUTED}" font-size="10">${v}</text>`;
           }
 
-          let barsSvg = '';
-          let labelsSvg = '';
+          const selectedPlayers = activeFilters.jugador.selected;
+
+          let groupsSvg = '';
           players.forEach((p, i) => {
             const centerX = marginLeft + i * groupW + groupW / 2;
+            const groupX = marginLeft + i * groupW;
             const lanzH = (p.lanzamientos / axisMax) * plotH;
             const golH = (p.goles / axisMax) * plotH;
             const lanzY = marginTop + plotH - lanzH;
@@ -297,21 +331,27 @@
             const lanzX = centerX - barW - gap / 2;
             const golX = centerX + gap / 2;
 
-            barsSvg += `<rect x="${lanzX}" y="${lanzY}" width="${barW}" height="${Math.max(0, lanzH)}" rx="4" fill="${COLOR_LANZ}"><title>${escapeHtml(p.fullLabel)} — Lanzamientos: ${p.lanzamientos}</title></rect>`;
-            barsSvg += `<rect x="${golX}" y="${golY}" width="${barW}" height="${Math.max(0, golH)}" rx="4" fill="${COLOR_GOL}"><title>${escapeHtml(p.fullLabel)} — Goles: ${p.goles}</title></rect>`;
+            const isSelected = selectedPlayers.includes(p.raw);
+            const isDimmed = selectedPlayers.length > 0 && !isSelected;
+            const highlight = isSelected ? ` stroke="#fff" stroke-width="1.5"` : '';
 
             const topY = Math.min(lanzY, golY);
-            labelsSvg += `<text x="${centerX}" y="${Math.max(marginTop - 8, topY - 6)}" text-anchor="middle" fill="${TEXT_SECONDARY}" font-size="10">${p.goles}/${p.lanzamientos} (${p.efectividad}%)</text>`;
-
             const fitsFull = p.fullLabel.length * 5.2 <= groupW - 4;
             const xLabel = fitsFull ? p.fullLabel : p.dorsalLabel;
-            labelsSvg += `<text x="${centerX}" y="${marginTop + plotH + 15}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="9">${escapeHtml(xLabel)}</text>`;
+
+            groupsSvg += `
+              <g class="player-bar-group" data-player="${escapeHtml(p.raw)}" opacity="${isDimmed ? 0.35 : 1}">
+                <rect x="${groupX}" y="0" width="${groupW}" height="${H}" fill="transparent" />
+                <rect x="${lanzX}" y="${lanzY}" width="${barW}" height="${Math.max(0, lanzH)}" rx="4" fill="${COLOR_LANZ}"${highlight}><title>${escapeHtml(p.fullLabel)} — Lanzamientos: ${p.lanzamientos}</title></rect>
+                <rect x="${golX}" y="${golY}" width="${barW}" height="${Math.max(0, golH)}" rx="4" fill="${COLOR_GOL}"${highlight}><title>${escapeHtml(p.fullLabel)} — Goles: ${p.goles}</title></rect>
+                <text x="${centerX}" y="${Math.max(marginTop - 8, topY - 6)}" text-anchor="middle" fill="${TEXT_SECONDARY}" font-size="10" style="pointer-events:none">${p.goles}/${p.lanzamientos} (${p.efectividad}%)</text>
+                <text x="${centerX}" y="${marginTop + plotH + 15}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="9" style="pointer-events:none">${escapeHtml(xLabel)}</text>
+              </g>`;
           });
 
           return `<svg viewBox="0 0 ${W} ${H}" class="player-chart-svg" role="img" aria-label="Comparativa de jugadores: lanzamientos y goles">
             ${gridSvg}
-            ${barsSvg}
-            ${labelsSvg}
+            ${groupsSvg}
           </svg>`;
         }
 
@@ -363,6 +403,7 @@
 
           const maxCount = Math.max(1, ...[...byZone.values()].map((z) => z.lanzamientos));
           const MIN_R = 10, MAX_R = 46;
+          const selectedZones = activeFilters.zonaLanzamiento.selected;
 
           const bubblesSvg = SHOT_ZONES.map((z) => {
             const data = byZone.get(z.code);
@@ -374,11 +415,17 @@
             const color = efficiencyColor(efectividad);
             const labelBelow = cy + r + 20 <= COURT_H;
             const labelY = labelBelow ? cy + r + 14 : cy - r - 8;
+            const isSelected = selectedZones.includes(z.code);
+            const isDimmed = selectedZones.length > 0 && !isSelected;
+            const strokeColor = isSelected ? '#ffffff' : color;
+            const strokeWidth = isSelected ? 3 : 1.5;
             return `
-              <circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" fill-opacity="0.8" stroke="${color}" stroke-width="1.5">
-                <title>${escapeHtml(z.name)} — ${data.goles}/${data.lanzamientos} (${efectividad}%)</title>
-              </circle>
-              <text x="${cx}" y="${labelY}" text-anchor="middle" fill="#e0e0e0" font-size="12" font-weight="600">${data.goles}/${data.lanzamientos} (${efectividad}%)</text>`;
+              <g class="zone-bubble-clickable" data-code="${z.code}" opacity="${isDimmed ? 0.35 : 1}">
+                <circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" fill-opacity="0.8" stroke="${strokeColor}" stroke-width="${strokeWidth}">
+                  <title>${escapeHtml(z.name)} — ${data.goles}/${data.lanzamientos} (${efectividad}%)</title>
+                </circle>
+                <text x="${cx}" y="${labelY}" text-anchor="middle" fill="#e0e0e0" font-size="12" font-weight="600" style="pointer-events:none">${data.goles}/${data.lanzamientos} (${efectividad}%)</text>
+              </g>`;
           }).join('');
 
           document.getElementById('zonePositionChart').innerHTML = `
@@ -386,6 +433,16 @@
               <image href="assets/half-court.png" x="0" y="0" width="${COURT_W}" height="${COURT_H}" />
               ${bubblesSvg}
             </svg>`;
+
+          document.querySelectorAll('#zonePositionChart .zone-bubble-clickable').forEach((g) => {
+            g.addEventListener('click', () => toggleZoneFilter(g.dataset.code));
+          });
+        }
+
+        function toggleZoneFilter(code) {
+          const cur = activeFilters.zonaLanzamiento.selected;
+          activeFilters.zonaLanzamiento.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          renderStats();
         }
 
         // ── Zona de portería: rejilla 3x3 + franjas de "fuera", misma
@@ -413,6 +470,7 @@
           const gridY = outTop + post;
           const width = gridW + post * 2 + outSide * 2;
           const height = gridH + post * 2 + outTop;
+          const selectedZones = activeFilters.zonaPorteria.selected;
 
           function cellSvg(code, x, y, w, h) {
             const data = byZone.get(code);
@@ -424,13 +482,17 @@
             const fill = rgbStr(rgb);
             const textColor = textColorOn(rgb);
             const cx = x + w / 2, cy = y + h / 2;
+            const isSelected = selectedZones.includes(code);
+            const isDimmed = selectedZones.length > 0 && !isSelected;
+            const strokeColor = isSelected ? '#ffffff' : fill;
+            const strokeWidth = isSelected ? 3 : 1;
             return `
-              <g>
-                <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="${fill}" stroke-width="1">
+              <g class="goal-cell-clickable" data-code="${code}" opacity="${isDimmed ? 0.35 : 1}">
+                <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="${strokeColor}" stroke-width="${strokeWidth}">
                   <title>${escapeHtml(GOAL_LABELS[code])} — ${data.goles}/${data.lanzamientos} (${efectividad}%)</title>
                 </rect>
-                <text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700">${data.goles}/${data.lanzamientos}</text>
-                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10">(${efectividad}%)</text>
+                <text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700" style="pointer-events:none">${data.goles}/${data.lanzamientos}</text>
+                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10" style="pointer-events:none">(${efectividad}%)</text>
               </g>`;
           }
 
@@ -450,6 +512,16 @@
               <rect x="${gridX - post / 2}" y="${gridY - post / 2}" width="${gridW + post}" height="${gridH + post}" fill="none" stroke="#666" stroke-width="${post}" />
               ${inner}
             </svg>`;
+
+          document.querySelectorAll('#goalZoneChart .goal-cell-clickable').forEach((g) => {
+            g.addEventListener('click', () => toggleGoalZoneFilter(g.dataset.code));
+          });
+        }
+
+        function toggleGoalZoneFilter(code) {
+          const cur = activeFilters.zonaPorteria.selected;
+          activeFilters.zonaPorteria.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          renderStats();
         }
 
         renderStats();

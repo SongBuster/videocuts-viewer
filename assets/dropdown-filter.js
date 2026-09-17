@@ -109,7 +109,14 @@ export function createDropdownFilter({ fieldLabel, options, onChange, showSearch
 
   return {
     el: root,
-    getSelected: () => selected
+    getSelected: () => selected,
+    // Permite fijar la selección desde fuera (p.ej. al pulsar un elemento en
+    // un gráfico) manteniendo el desplegable sincronizado visualmente.
+    setSelected: (newSelected) => {
+      selected = newSelected
+      renderList()
+      updateButtonState()
+    }
   }
 }
 

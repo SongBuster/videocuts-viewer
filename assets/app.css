@@ -182,3 +182,6 @@ button { font-family: inherit; }
 .player-chart-svg { width: 100%; height: auto; display: block; }
 .zone-bubble-svg { width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto; }
 .goal-zone-svg { width: 100%; max-width: 280px; height: auto; display: block; margin: 0 auto; }
+
+/* ── Gráficos interactivos: pulsar un elemento filtra el resto de la página ── */
+.player-bar-group, .zone-bubble-clickable, .goal-cell-clickable { cursor: pointer; }
