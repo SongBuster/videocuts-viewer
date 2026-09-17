@@ -55,9 +55,11 @@
 <script type="module">
   import { fetchJSON, escapeHtml } from './assets/app.js'
   import { createDropdownFilter, createTreeDropdownFilter, buildTimeTree, computeTimeBucketKey } from './assets/dropdown-filter.js'
+  import { SHOT_ZONES, COURT_W, COURT_H } from './assets/zones.js'
 
   const COL_PLAYER = 'Jugador'
   const COL_CODE = 'Codigo'
+  const COL_POSITION = 'Posición'
 
   // El CSV trae "#33 NOMBRE" — para el desplegable interesa ordenar por
   // dorsal numérico (no como texto: "#10" iría antes que "#2") y sin el "#",
@@ -117,6 +119,10 @@
                   <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
                 </div>
                 <div id="playerComparisonChart"></div>
+              </div>
+              <div class="panel">
+                <div class="panel-title">Zona de lanzamiento</div>
+                <div id="zonePositionChart"></div>
               </div>
             </main>
           </div>`;
@@ -210,6 +216,7 @@
             figure(golesPorPartidoLabel, 'goles por partido');
 
           renderPlayerComparison(filtered);
+          renderZonePositionChart(filtered);
         }
 
         // ── Comparativa de jugadores: solo tiene sentido con más de uno a la
@@ -301,6 +308,65 @@
             ${labelsSvg}
           </svg>`;
         }
+
+        // ── Zona de lanzamiento: mismas 13 zonas e imagen de pista que usa
+        // VideoCuts, con un círculo por zona (área proporcional a los
+        // lanzamientos, no el radio — si no, el ojo exagera la diferencia)
+        // y la misma etiqueta "goles/lanzamientos (%)" que en la comparativa.
+        function parseZoneCode(pos) {
+          const m = (pos || '').match(/^\s*(\S+)\s*·/);
+          return m ? m[1] : null;
+        }
+
+        function zoneCentroid(points) {
+          const cx = points.reduce((s, p) => s + p.x, 0) / points.length;
+          const cy = points.reduce((s, p) => s + p.y, 0) / points.length;
+          return { cx, cy };
+        }
+
+        function renderZonePositionChart(filtered) {
+          const byZone = new Map();
+          for (const r of filtered) {
+            const code = parseZoneCode(r[COL_POSITION]);
+            if (!code) continue;
+            const entry = byZone.get(code) || { lanzamientos: 0, goles: 0 };
+            entry.lanzamientos++;
+            if (/gol/i.test(r['Resultado'] || '')) entry.goles++;
+            byZone.set(code, entry);
+          }
+
+          const maxCount = Math.max(1, ...[...byZone.values()].map((z) => z.lanzamientos));
+          const MIN_R = 10, MAX_R = 46;
+
+          const polysSvg = SHOT_ZONES.map((z) => {
+            const pts = z.points.map((p) => `${p.x},${p.y}`).join(' ');
+            return `<polygon points="${pts}" fill="none" stroke="#333" stroke-width="1.5" />`;
+          }).join('');
+
+          const bubblesSvg = SHOT_ZONES.map((z) => {
+            const data = byZone.get(z.code);
+            if (!data || data.lanzamientos === 0) return '';
+            const { cx, cy } = zoneCentroid(z.points);
+            // Área ∝ lanzamientos: radio ∝ raíz cuadrada.
+            const r = MIN_R + (MAX_R - MIN_R) * Math.sqrt(data.lanzamientos / maxCount);
+            const efectividad = Math.round((data.goles / data.lanzamientos) * 100);
+            const labelBelow = cy + r + 20 <= COURT_H;
+            const labelY = labelBelow ? cy + r + 14 : cy - r - 8;
+            return `
+              <circle cx="${cx}" cy="${cy}" r="${r}" fill="#3b82f6" fill-opacity="0.55" stroke="#3b82f6" stroke-width="1.5">
+                <title>${escapeHtml(z.name)} — ${data.goles}/${data.lanzamientos} (${efectividad}%)</title>
+              </circle>
+              <text x="${cx}" y="${labelY}" text-anchor="middle" fill="#c3c2b7" font-size="12" font-weight="600">${data.goles}/${data.lanzamientos} (${efectividad}%)</text>`;
+          }).join('');
+
+          document.getElementById('zonePositionChart').innerHTML = `
+            <svg viewBox="0 0 ${COURT_W} ${COURT_H}" class="zone-bubble-svg" role="img" aria-label="Zona de lanzamiento: lanzamientos y goles por zona">
+              <image href="assets/half-court.png" x="0" y="0" width="${COURT_W}" height="${COURT_H}" />
+              ${polysSvg}
+              ${bubblesSvg}
+            </svg>`;
+        }
+
         renderStats();
       }
 
