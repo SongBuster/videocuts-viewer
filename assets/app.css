@@ -143,6 +143,10 @@ button { font-family: inherit; }
   background: #1e1e1e; border: 1px solid #383838; border-radius: 8px;
   box-shadow: 0 12px 32px rgba(0,0,0,0.5); padding: 8px; display: flex; flex-direction: column; gap: 4px;
 }
+/* Sin esto, el "display: flex" de arriba pisa al atributo hidden (misma
+   especificidad que el display:none del navegador, y gana el nuestro por ir
+   después) — el panel se quedaría siempre visible aunque hidden esté puesto. */
+.dd-filter-panel[hidden] { display: none; }
 .dd-filter-search {
   background: #111; border: 1px solid #333; border-radius: 5px; color: #e0e0e0;
   padding: 6px 9px; font-size: 12px; outline: none; margin-bottom: 4px;
