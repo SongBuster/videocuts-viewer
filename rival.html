@@ -241,8 +241,8 @@
           renderGoalZoneChart(filteredExcept('zonaPorteria'));
         }
 
-        // ── Comparativa de jugadores: solo tiene sentido con más de uno a la
-        // vista (según el filtro de Jugador y el resto de filtros activos).
+        // ── Comparativa de jugadores: siempre visible (actúa también como
+        // filtro clicable), salvo que no haya lanzamientos que mostrar.
         function niceMax(value) {
           return value <= 0 ? 5 : Math.ceil(value / 5) * 5;
         }
@@ -259,7 +259,7 @@
             byPlayer.set(raw, entry);
           }
 
-          if (byPlayer.size <= 1) { panel.hidden = true; return; }
+          if (byPlayer.size === 0) { panel.hidden = true; return; }
           panel.hidden = false;
 
           const players = [...byPlayer.entries()]
