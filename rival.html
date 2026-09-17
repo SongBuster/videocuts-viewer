@@ -324,6 +324,18 @@
           return { cx, cy };
         }
 
+        // Rojo (0%) → amarillo (50%) → verde (100%), mismos tonos que la
+        // paleta de estado (nunca reutilizados como color de serie normal).
+        function lerpChannel(a, b, t) { return Math.round(a + (b - a) * t); }
+        function mixColor(c1, c2, t) {
+          return `rgb(${lerpChannel(c1[0], c2[0], t)},${lerpChannel(c1[1], c2[1], t)},${lerpChannel(c1[2], c2[2], t)})`;
+        }
+        function efficiencyColor(pct) {
+          const RED = [208, 59, 59], YELLOW = [250, 178, 25], GREEN = [12, 163, 12];
+          const t = Math.max(0, Math.min(100, pct));
+          return t <= 50 ? mixColor(RED, YELLOW, t / 50) : mixColor(YELLOW, GREEN, (t - 50) / 50);
+        }
+
         function renderZonePositionChart(filtered) {
           const byZone = new Map();
           for (const r of filtered) {
@@ -338,11 +350,6 @@
           const maxCount = Math.max(1, ...[...byZone.values()].map((z) => z.lanzamientos));
           const MIN_R = 10, MAX_R = 46;
 
-          const polysSvg = SHOT_ZONES.map((z) => {
-            const pts = z.points.map((p) => `${p.x},${p.y}`).join(' ');
-            return `<polygon points="${pts}" fill="none" stroke="#333" stroke-width="1.5" />`;
-          }).join('');
-
           const bubblesSvg = SHOT_ZONES.map((z) => {
             const data = byZone.get(z.code);
             if (!data || data.lanzamientos === 0) return '';
@@ -350,19 +357,19 @@
             // Área ∝ lanzamientos: radio ∝ raíz cuadrada.
             const r = MIN_R + (MAX_R - MIN_R) * Math.sqrt(data.lanzamientos / maxCount);
             const efectividad = Math.round((data.goles / data.lanzamientos) * 100);
+            const color = efficiencyColor(efectividad);
             const labelBelow = cy + r + 20 <= COURT_H;
             const labelY = labelBelow ? cy + r + 14 : cy - r - 8;
             return `
-              <circle cx="${cx}" cy="${cy}" r="${r}" fill="#3b82f6" fill-opacity="0.55" stroke="#3b82f6" stroke-width="1.5">
+              <circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" fill-opacity="0.8" stroke="${color}" stroke-width="1.5">
                 <title>${escapeHtml(z.name)} — ${data.goles}/${data.lanzamientos} (${efectividad}%)</title>
               </circle>
-              <text x="${cx}" y="${labelY}" text-anchor="middle" fill="#c3c2b7" font-size="12" font-weight="600">${data.goles}/${data.lanzamientos} (${efectividad}%)</text>`;
+              <text x="${cx}" y="${labelY}" text-anchor="middle" fill="#e0e0e0" font-size="12" font-weight="600">${data.goles}/${data.lanzamientos} (${efectividad}%)</text>`;
           }).join('');
 
           document.getElementById('zonePositionChart').innerHTML = `
             <svg viewBox="0 0 ${COURT_W} ${COURT_H}" class="zone-bubble-svg" role="img" aria-label="Zona de lanzamiento: lanzamientos y goles por zona">
               <image href="assets/half-court.png" x="0" y="0" width="${COURT_W}" height="${COURT_H}" />
-              ${polysSvg}
               ${bubblesSvg}
             </svg>`;
         }
