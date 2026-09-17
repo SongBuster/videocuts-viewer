@@ -180,8 +180,12 @@ button { font-family: inherit; }
 .chart-legend-item { display: inline-flex; align-items: center; gap: 6px; color: #c3c2b7; font-size: 12px; }
 .chart-legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 .player-chart-svg { width: 100%; height: auto; display: block; }
-.zone-bubble-svg { width: 100%; max-width: 480px; height: auto; display: block; margin: 0 auto; }
-.goal-zone-svg { width: 100%; max-width: 280px; height: auto; display: block; margin: 0 auto; }
+.zone-bubble-svg, .goal-zone-svg { width: 100%; max-width: 400px; height: auto; display: block; margin: 0 auto; }
+
+/* ── Zona de lanzamiento y zona de portería: una al lado de la otra si caben,
+   apiladas si no — mismo ancho, así se ven del mismo tamaño. ── */
+.zones-row { display: flex; flex-wrap: wrap; gap: 16px; }
+.zones-row > .panel { flex: 1 1 320px; min-width: 280px; }
 
 /* ── Gráficos interactivos: pulsar un elemento filtra el resto de la página ── */
 .player-bar-group, .zone-bubble-clickable, .goal-cell-clickable { cursor: pointer; }
