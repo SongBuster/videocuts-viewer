@@ -190,7 +190,7 @@
 
           const lanzamientos = filtered.length;
           const goles = filtered.filter((r) => /gol/i.test(r['Resultado'] || '')).length;
-          const efectividad = lanzamientos > 0 ? Math.round((goles / lanzamientos) * 100) : 0;
+          const efectividad = lanzamientos > 0 ? ((goles / lanzamientos) * 100).toFixed(1) : '0.0';
           const partidosDistintos = new Set(filtered.map((r) => r[COL_CODE])).size || 1;
           const golesPorPartido = goles / partidosDistintos;
           const golesPorPartidoLabel = Number.isInteger(golesPorPartido) ? golesPorPartido : golesPorPartido.toFixed(1);
