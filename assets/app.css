@@ -166,3 +166,6 @@ button { font-family: inherit; }
 .dd-filter-row:hover .dd-filter-only { display: inline-block; }
 .dd-filter-list { max-height: 260px; overflow-y: auto; }
 .dd-filter-empty { color: #555; font-size: 12px; padding: 10px 6px; text-align: center; }
+.dd-filter-row-group { font-weight: 600; }
+.dd-filter-row-child { padding-left: 26px; }
+.dd-filter-row-child .dd-filter-row-label { color: #bbb; }

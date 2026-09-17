@@ -55,7 +55,7 @@
 
 <script type="module">
   import { fetchJSON, escapeHtml } from './assets/app.js'
-  import { createDropdownFilter } from './assets/dropdown-filter.js'
+  import { createDropdownFilter, createTreeDropdownFilter, buildTimeTree, computeTimeBucketKey } from './assets/dropdown-filter.js'
 
   const COL_PLAYER = 'Jugador'
   const COL_CODE = 'Codigo'
@@ -110,25 +110,37 @@
         });
 
         const filtersCol = document.getElementById('filtersCol');
-        const activeFilters = {}
+        // Cada filtro registra cómo sacar "su" valor de un registro
+        // (getValue) y qué tiene seleccionado ahora mismo — así el filtro de
+        // tiempo (un valor calculado, no una columna directa) encaja igual
+        // que los que sí son una columna tal cual.
+        const activeFilters = {} // key -> { getValue, selected }
 
-        function addFilter(fieldLabel, column) {
+        function addFilter(key, fieldLabel, column) {
           const values = [...new Set(records.map((r) => r[column]).filter(Boolean))].sort();
           const filter = createDropdownFilter({
             fieldLabel,
             options: values.map((v) => ({ value: v, label: v })),
-            onChange: (selected) => { activeFilters[column] = selected; renderAuxText(); }
+            onChange: (selected) => { activeFilters[key].selected = selected; renderAuxText(); }
           });
-          activeFilters[column] = [];
+          activeFilters[key] = { getValue: (r) => r[column], selected: [] };
           filtersCol.appendChild(filter.el);
         }
 
-        addFilter('Partido', COL_CODE);
-        addFilter('Jugador', COL_PLAYER);
+        addFilter('partido', 'Partido', COL_CODE);
+        addFilter('jugador', 'Jugador', COL_PLAYER);
+
+        const timeFilter = createTreeDropdownFilter({
+          fieldLabel: 'Tiempo de juego',
+          groups: buildTimeTree(),
+          onChange: (selected) => { activeFilters.tiempo.selected = selected; renderAuxText(); }
+        });
+        activeFilters.tiempo = { getValue: (r) => computeTimeBucketKey(r), selected: [] };
+        filtersCol.appendChild(timeFilter.el);
 
         function renderAuxText() {
           const filtered = records.filter((r) =>
-            Object.entries(activeFilters).every(([col, sel]) => sel.length === 0 || sel.includes(r[col]))
+            Object.values(activeFilters).every(({ getValue, selected }) => selected.length === 0 || selected.includes(getValue(r)))
           );
           document.getElementById('auxText').textContent =
             `${filtered.length} de ${records.length} eventos — de prueba, mientras decidimos qué mostrar aquí.`;
