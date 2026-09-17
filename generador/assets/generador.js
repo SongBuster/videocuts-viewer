@@ -1,40 +1,36 @@
-// ─── Generador de páginas de estadísticas (a partir de un CSV) ────────────────
-// Herramienta 100% local: se abre el CSV con el selector de fichero del propio
-// navegador (File API), se procesa aquí mismo y se descarga un único .html
-// autocontenido (datos + página, sin depender de ningún servidor ni de otros
-// ficheros) listo para subir a este mismo repositorio.
-//
-// FASE ACTUAL: solo el esqueleto. La página generada carga y muestra los
-// datos del CSV (tabla filtrable, para comprobar que la importación es
-// correcta) pero los paneles de estadísticas/gráficos son de momento
-// marcadores de posición — se rellenarán en una fase posterior.
+// ─── Generador de páginas de estadísticas (a partir de uno o varios CSV) ──────
+// Herramienta 100% local: los CSV se procesan aquí mismo, en el navegador, y
+// se descarga un único .html listo para subir a este mismo repositorio
+// (junto a index.html, para que pueda usar assets/app.css y assets/zones.js).
 
 // ─── Definición de cada modo ──────────────────────────────────────────────────
 const MODES = {
   jugadores: {
     title: 'Estadísticas de jugadores',
     subtitle: 'Lanzamientos de los jugadores del equipo analizado',
-    defaultFileName: 'jugadores.html',
-    panels: [
-      'Lanzamientos por resultado',
-      'Lanzamientos por jugador',
-      'Zona de lanzamiento',
-      'Zona de portería',
-      'Evolución por partido'
-    ]
+    defaultFileName: 'jugadores.html'
   },
   portero: {
     title: 'Estadísticas de portero',
     subtitle: 'Lanzamientos de jugadores rivales contra el portero analizado',
-    defaultFileName: 'portero.html',
-    panels: [
-      'Lanzamientos recibidos por resultado',
-      'Lanzamientos por equipo rival',
-      'Zona de lanzamiento del rival',
-      'Zona de portería recibida',
-      'Evolución por partido'
-    ]
+    defaultFileName: 'portero.html'
   }
+}
+
+// Nombres de columna "fijos" tal cual los exporta VideoCuts por defecto —
+// todo lo demás (Mano, Fase de juego, Tipo de lanzamiento, Con amago,
+// Postura...) se trata de forma genérica según la plantilla de cada uno.
+const COL = {
+  team: 'Equipo',
+  code: 'Codigo',
+  player: 'Jugador',
+  outcome: 'Resultado',
+  period: 'Parte',
+  matchTime: 'Tiempo de partido',
+  position: 'Posición',
+  goal: 'Portería',
+  clipId: 'ID del corte (técnico)',
+  matchId: 'ID del partido (técnico)'
 }
 
 // ─── Parseo de CSV (mismo convenio que la exportación de VideoCuts: ────────────
@@ -87,17 +83,10 @@ function embedJson(data) {
   return JSON.stringify(data).replace(/</g, '\\u003c')
 }
 
-// ─── Plantilla de la página generada (esqueleto, sin cálculos estadísticos) ───
-function buildSkeletonHtml({ mode, headers, records, sourceFileName }) {
+// ─── Plantilla de la página generada (dashboard real, con filtros/gráficos) ───
+function buildDashboardHtml({ mode, headers, records, sourceFileName }) {
   const cfg = MODES[mode]
   const generatedAt = new Date().toLocaleString()
-
-  const panelsHtml = cfg.panels.map((p) => `
-        <div class="panel placeholder-panel">
-          <div class="panel-title">${escapeHtml(p)}</div>
-          <div class="placeholder-body">📊 Pendiente de implementar</div>
-        </div>`).join('')
-
   const payload = { mode, headers, records, sourceFileName, generatedAt }
 
   return `<!doctype html>
@@ -106,42 +95,11 @@ function buildSkeletonHtml({ mode, headers, records, sourceFileName }) {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${escapeHtml(cfg.title)} — VideoCuts</title>
+<link rel="stylesheet" href="assets/app.css" />
 <style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: #121212; color: #e0e0e0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  }
-  a { color: #3b82f6; }
-  header.site-header {
-    padding: 14px 20px; border-bottom: 1px solid #2a2a2a;
-    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
-  }
-  header.site-header h1 { font-size: 17px; margin: 0; color: #fff; }
-  header.site-header .meta { color: #666; font-size: 12px; }
-  header.site-header a.back { color: #888; font-size: 12px; text-decoration: none; }
-  header.site-header a.back:hover { color: #ccc; }
-  .import-status { color: #4ade80; font-size: 12px; padding: 10px 20px; border-bottom: 1px solid #2a2a2a; }
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px; display: flex; flex-direction: column; gap: 18px; }
-  .panel { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 16px 18px; }
-  .panel-title { color: #aaa; font-size: 12px; font-weight: 600; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .03em; }
-  .placeholder-panel { border-style: dashed; }
-  .placeholder-body { color: #555; font-size: 13px; text-align: center; padding: 30px 10px; }
-  .panels-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
-  .filters { display: flex; flex-direction: column; gap: 10px; }
-  .filters .search-row { display: flex; gap: 10px; align-items: center; }
-  .filters .search-row input {
-    flex: 1; background: #1a1a1a; border: 1px solid #333; border-radius: 6px;
-    color: #e0e0e0; padding: 7px 10px; font-size: 13px; outline: none;
-  }
-  .filters .clear-btn { background: transparent; border: 1px solid #333; color: #999; border-radius: 6px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
-  .filters .clear-btn:hover { border-color: #666; color: #ccc; }
-  .chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip-group .group-label { color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; width: 100%; margin-top: 2px; }
-  .chip { background: #1e1e1e; border: 1px solid #333; color: #ccc; border-radius: 999px; padding: 4px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
-  .chip:hover { border-color: #555; }
-  .chip.active { background: #1e3a8a55; border-color: #3b82f6; color: #cfe0ff; }
+  .team-grid .match-card { cursor: pointer; border: none; text-align: left; font-family: inherit; width: 100%; }
+  .change-team-btn { background: transparent; border: 1px solid #333; color: #999; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+  .change-team-btn:hover { border-color: #666; color: #ccc; }
   table.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   table.data-table th, table.data-table td { padding: 6px 10px; border-bottom: 1px solid #262626; text-align: left; white-space: nowrap; }
   table.data-table th { color: #888; font-weight: 600; position: sticky; top: 0; background: #1a1a1a; }
@@ -154,116 +112,228 @@ function buildSkeletonHtml({ mode, headers, records, sourceFileName }) {
   <header class="site-header">
     <a class="back" href="index.html">← Partidos</a>
     <h1>${escapeHtml(cfg.title)}</h1>
-    <span class="meta">${escapeHtml(cfg.subtitle)}</span>
+    <span class="meta" id="teamMeta">${escapeHtml(cfg.subtitle)}</span>
+    <span class="spacer"></span>
+    <button class="change-team-btn" id="changeTeamBtn" hidden>↺ Cambiar de equipo</button>
   </header>
-  <div class="import-status" id="importStatus"></div>
 
-  <div class="wrap">
-    <div class="panel filters">
-      <div class="search-row">
-        <input id="f-text" type="text" placeholder="Buscar en cualquier columna..." />
-        <button class="clear-btn" id="f-clear">Limpiar filtros</button>
-      </div>
-      <div id="chip-groups"></div>
-    </div>
-
-    <div class="panels-grid">${panelsHtml}
-    </div>
-
-    <div class="panel">
-      <div class="panel-title">Detalle (datos importados del CSV)</div>
-      <div class="table-wrap"><table class="data-table" id="dataTable"></table></div>
-      <div class="row-count" id="rowCount"></div>
-    </div>
+  <div class="home-wrap" id="teamGate">
+    <p class="intro">Elige el equipo para ver sus estadísticas — el resto de filtros y gráficos se calculan solo sobre ese equipo.</p>
+    <div class="match-grid team-grid" id="teamGrid"></div>
   </div>
 
+  <div id="dashboardRoot" hidden></div>
+
 <script id="data" type="application/json">${embedJson(payload)}</script>
-<script>
+<script type="module">
+  import { renderShotZoneMap, renderGoalZoneMap, GOAL_LABELS } from './assets/zones.js'
+
   const DATA = JSON.parse(document.getElementById('data').textContent);
-  document.getElementById('importStatus').textContent =
-    '✓ ' + DATA.records.length + ' filas importadas de "' + DATA.sourceFileName + '" · generado ' + DATA.generatedAt;
-
-  // Columnas candidatas a filtro rápido: pocos valores distintos (evita
-  // columnas de texto libre o casi-únicas, como notas o el propio jugador
-  // cuando hay muchos).
+  const COL = ${JSON.stringify(COL)};
+  const CORE_KEYS = new Set(Object.values(COL));
+  // Columnas propias de cada plantilla (Mano, Fase de juego, Tipo de
+  // lanzamiento, Con amago, Postura...) — se tratan de forma genérica.
+  const EXTRA_FIELDS = DATA.headers.filter((h) => !CORE_KEYS.has(h));
   const MAX_DISTINCT_FOR_CHIPS = 20;
-  function distinctValues(field) {
-    const set = new Set();
-    for (const r of DATA.records) if (r[field]) set.add(r[field]);
-    return [...set].sort();
-  }
-  const chipFields = DATA.headers.filter((h) => {
-    const n = distinctValues(h).length;
-    return n > 1 && n <= MAX_DISTINCT_FOR_CHIPS;
-  });
 
-  const filters = { text: '', byField: {} };
+  const LABEL_TO_GOALZONE = Object.fromEntries(Object.entries(GOAL_LABELS).map(([code, label]) => [label, code]));
+  function parseZoneCode(pos) {
+    const m = (pos || '').match(/^\\s*(\\S+)\\s*·/);
+    return m ? m[1] : null;
+  }
+  function parseGoalZoneCode(label) {
+    return LABEL_TO_GOALZONE[label] || null;
+  }
 
   function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
-
   function toggleInArray(arr, val) {
     return arr.includes(val) ? arr.filter((v) => v !== val) : [...arr, val];
   }
+  function uniqueSorted(records, pick) {
+    const map = new Map();
+    for (const r of records) {
+      const v = pick(r);
+      if (!v) continue;
+      map.set(v, (map.get(v) || 0) + 1);
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1]).map(([value, count]) => ({ value, count }));
+  }
+
+  const state = { team: null, filters: { text: '', byField: {} } };
+
+  function teamsList() {
+    return uniqueSorted(DATA.records, (r) => r[COL.team]);
+  }
+
+  function showTeamGate() {
+    const teams = teamsList();
+    document.getElementById('teamGrid').innerHTML = teams.map(({ value, count }) => \`
+      <button class="match-card" data-team="\${escapeHtml(value)}">
+        <div class="name">\${escapeHtml(value)}</div>
+        <div class="figures"><span><b>\${count}</b> filas</span></div>
+      </button>\`).join('') || '<div class="empty-state">No hay datos.</div>';
+    document.querySelectorAll('.team-grid .match-card').forEach((btn) => {
+      btn.addEventListener('click', () => selectTeam(btn.dataset.team));
+    });
+    document.getElementById('teamGate').hidden = false;
+    document.getElementById('dashboardRoot').hidden = true;
+    document.getElementById('changeTeamBtn').hidden = true;
+  }
+
+  function selectTeam(team) {
+    state.team = team;
+    state.filters = { text: '', byField: {} };
+    document.getElementById('teamGate').hidden = true;
+    document.getElementById('changeTeamBtn').hidden = false;
+    document.getElementById('teamMeta').textContent = team;
+    mountDashboard();
+  }
+
+  document.getElementById('changeTeamBtn').addEventListener('click', showTeamGate);
+
+  function recordsForTeam() {
+    return DATA.records.filter((r) => r[COL.team] === state.team);
+  }
 
   function computeFiltered() {
-    const q = filters.text.trim().toLowerCase();
-    return DATA.records.filter((r) => {
+    const base = recordsForTeam();
+    const q = state.filters.text.trim().toLowerCase();
+    return base.filter((r) => {
       if (q) {
-        const hay = DATA.headers.map((h) => r[h] ?? '').join(' ').toLowerCase();
+        const hay = DATA.headers.map((h) => r[h] || '').join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
-      for (const field of Object.keys(filters.byField)) {
-        const selected = filters.byField[field];
-        if (selected.length > 0 && !selected.includes(r[field])) return false;
+      for (const field of Object.keys(state.filters.byField)) {
+        const sel = state.filters.byField[field];
+        if (sel.length > 0 && !sel.includes(r[field])) return false;
       }
       return true;
     });
   }
 
-  function renderChips() {
-    const el = document.getElementById('chip-groups');
-    el.innerHTML = chipFields.map(function (field) {
-      var options = distinctValues(field).map(function (v) {
-        var selected = (filters.byField[field] || []).includes(v);
-        return '<button type="button" class="chip ' + (selected ? 'active' : '') +
-          '" data-field="' + escapeHtml(field) + '" data-v="' + escapeHtml(v) + '">' + escapeHtml(v) + '</button>';
-      }).join('');
-      return '<div class="chip-group"><span class="group-label">' + escapeHtml(field) + '</span>' + options + '</div>';
-    }).join('');
-    el.querySelectorAll('.chip').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const field = btn.dataset.field, v = btn.dataset.v;
-        filters.byField[field] = toggleInArray(filters.byField[field] || [], v);
-        rerender();
-      });
+  function mountDashboard() {
+    const root = document.getElementById('dashboardRoot');
+    root.hidden = false;
+    root.innerHTML = \`
+      <div class="app-layout">
+        <div class="app-main">
+          <div class="panel filters">
+            <div class="search-row">
+              <input id="f-text" type="text" placeholder="Buscar en cualquier columna..." />
+              <button class="clear-btn" id="f-clear">Limpiar filtros</button>
+            </div>
+            <div id="chip-groups"></div>
+          </div>
+
+          <div class="panel stat-headline" id="headline"></div>
+
+          <div class="stats-grid">
+            <div class="panel"><div class="panel-title">Por resultado</div><div id="barOutcome"></div></div>
+            <div class="panel"><div class="panel-title">Por jugador</div><div id="barPlayer"></div></div>
+            <div class="panel"><div class="panel-title">Zona de lanzamiento</div><div id="zoneMap"></div></div>
+            <div class="panel"><div class="panel-title">Zona de portería</div><div id="goalMap"></div></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">Detalle</div>
+            <div class="table-wrap"><table class="data-table" id="dataTable"></table></div>
+            <div class="row-count" id="rowCount"></div>
+          </div>
+        </div>
+      </div>\`;
+
+    document.getElementById('f-text').addEventListener('input', (e) => { state.filters.text = e.target.value; rerender(); });
+    document.getElementById('f-clear').addEventListener('click', () => {
+      state.filters = { text: '', byField: {} };
+      document.getElementById('f-text').value = '';
+      rerender();
     });
+
+    rerender();
   }
 
-  function renderTable(records) {
-    const table = document.getElementById('dataTable');
-    const theadCells = DATA.headers.map((h) => '<th>' + escapeHtml(h) + '</th>').join('');
-    const bodyRows = records.map((r) =>
-      '<tr>' + DATA.headers.map((h) => '<td>' + escapeHtml(r[h]) + '</td>').join('') + '</tr>'
+  function renderChipGroup(el, groupLabel, options, selected, onToggle) {
+    el.innerHTML = '<span class="group-label">' + escapeHtml(groupLabel) + '</span>' + options.map(({ value, count }) =>
+      '<button type="button" class="chip ' + (selected.includes(value) ? 'active' : '') + '" data-v="' + escapeHtml(value) + '">' +
+        escapeHtml(value) + ' <span style="opacity:.55">(' + count + ')</span></button>'
     ).join('');
-    table.innerHTML = '<thead><tr>' + theadCells + '</tr></thead><tbody>' + bodyRows + '</tbody>';
-    document.getElementById('rowCount').textContent = records.length + ' de ' + DATA.records.length + ' filas';
+    el.querySelectorAll('.chip').forEach((btn) => btn.addEventListener('click', () => onToggle(btn.dataset.v)));
+    el.style.display = options.length ? 'flex' : 'none';
+  }
+
+  function renderBarList(el, data, selected, onToggle, emptyLabel) {
+    if (data.length === 0) { el.innerHTML = '<div class="bar-empty">' + emptyLabel + '</div>'; return; }
+    const max = Math.max(1, ...data.map((d) => d.count));
+    el.innerHTML = data.map(({ value, count }) =>
+      '<div class="bar-row ' + (selected.includes(value) ? 'active' : '') + '" data-v="' + escapeHtml(value) + '">' +
+        '<span class="label">' + escapeHtml(value) + '</span>' +
+        '<div class="track"><div class="fill" style="width:' + (count / max) * 100 + '%"></div></div>' +
+        '<span class="n">' + count + '</span></div>'
+    ).join('');
+    el.querySelectorAll('.bar-row').forEach((row) => row.addEventListener('click', () => onToggle(row.dataset.v)));
+  }
+
+  function toggleField(field, value) {
+    state.filters.byField[field] = toggleInArray(state.filters.byField[field] || [], value);
+    rerender();
   }
 
   function rerender() {
-    renderChips();
-    renderTable(computeFiltered());
+    const $ = (sel) => document.getElementById(sel);
+    const base = recordsForTeam();
+    const filtered = computeFiltered();
+
+    const goals = filtered.filter((r) => /gol/i.test(r[COL.outcome] || '')).length;
+    $('headline').innerHTML =
+      '<div class="figure"><span class="n">' + filtered.length + '</span><span class="l">lanzamientos (con este filtro)</span></div>' +
+      '<div class="figure"><span class="n">' + goals + '</span><span class="l">goles</span></div>' +
+      '<div class="figure"><span class="n">' + (filtered.length ? Math.round((goals / filtered.length) * 100) : 0) + '%</span><span class="l">eficacia</span></div>';
+
+    // Chips: código de partido/jornada, parte, y cualquier campo propio de la
+    // plantilla con pocos valores distintos (sobre el equipo entero, para que
+    // no desaparezcan al filtrar).
+    const chipFields = [COL.code, COL.period, ...EXTRA_FIELDS].filter((f) => {
+      const n = uniqueSorted(base, (r) => r[f]).length;
+      return n > 1 && n <= MAX_DISTINCT_FOR_CHIPS;
+    });
+    $('chip-groups').innerHTML = chipFields.map((f) => '<div class="chip-group" id="chips-' + btoa(encodeURIComponent(f)).replace(/=/g, '') + '"></div>').join('');
+    for (const f of chipFields) {
+      const el = document.getElementById('chips-' + btoa(encodeURIComponent(f)).replace(/=/g, ''));
+      renderChipGroup(el, f, uniqueSorted(base, (r) => r[f]), state.filters.byField[f] || [], (v) => toggleField(f, v));
+    }
+
+    renderBarList($('barOutcome'), uniqueSorted(filtered, (r) => r[COL.outcome] || 'Sin resultado'),
+      state.filters.byField[COL.outcome] || [], (v) => toggleField(COL.outcome, v), 'Sin lanzamientos con este filtro');
+    renderBarList($('barPlayer'), uniqueSorted(filtered, (r) => r[COL.player]),
+      state.filters.byField[COL.player] || [], (v) => toggleField(COL.player, v), 'Sin lanzamientos con este filtro');
+
+    const zoneCounts = {};
+    for (const r of filtered) { const z = parseZoneCode(r[COL.position]); if (z) zoneCounts[z] = (zoneCounts[z] || 0) + 1; }
+    renderShotZoneMap($('zoneMap'), {
+      counts: zoneCounts, selected: [],
+      onToggle: () => {} // filtrar por zona exacta no aplica aquí: el texto ya es "código · nombre" completo
+    });
+
+    const goalCounts = {};
+    for (const r of filtered) { const g = parseGoalZoneCode(r[COL.goal]); if (g) goalCounts[g] = (goalCounts[g] || 0) + 1; }
+    renderGoalZoneMap($('goalMap'), { counts: goalCounts, selected: [], onToggle: () => {} });
+
+    const tableCols = DATA.headers.filter((h) => h !== COL.clipId && h !== COL.matchId && h !== COL.team);
+    const theadCells = tableCols.map((h) => '<th>' + escapeHtml(h) + '</th>').join('') + '<th>Vídeo</th>';
+    const bodyRows = filtered.map((r) => {
+      const cells = tableCols.map((h) => '<td>' + escapeHtml(r[h]) + '</td>').join('');
+      const link = (r[COL.matchId] && r[COL.clipId])
+        ? '<a href="corte.html?id=' + encodeURIComponent(r[COL.matchId]) + '&evento=' + encodeURIComponent(r[COL.clipId]) + '" target="_blank" rel="noopener">▶ ver</a>'
+        : '—';
+      return '<tr>' + cells + '<td>' + link + '</td></tr>';
+    }).join('');
+    $('dataTable').innerHTML = '<thead><tr>' + theadCells + '</tr></thead><tbody>' + bodyRows + '</tbody>';
+    $('rowCount').textContent = filtered.length + ' de ' + base.length + ' filas de este equipo';
   }
 
-  document.getElementById('f-text').addEventListener('input', (e) => { filters.text = e.target.value; rerender(); });
-  document.getElementById('f-clear').addEventListener('click', () => {
-    filters.text = ''; filters.byField = {};
-    document.getElementById('f-text').value = '';
-    rerender();
-  });
-
-  rerender();
+  showTeamGate();
 </script>
 </body>
 </html>`
@@ -282,7 +352,7 @@ function downloadFile(filename, content) {
 }
 
 // ─── UI del generador ─────────────────────────────────────────────────────────
-const state = { mode: 'jugadores', file: null, headers: [], records: [] }
+const state = { mode: 'jugadores', headers: [], records: [] }
 
 const fileInfoEl = document.getElementById('fileInfo')
 const generateBtn = document.getElementById('generateBtn')
@@ -293,24 +363,32 @@ document.querySelectorAll('input[name="mode"]').forEach((el) => {
 })
 
 document.getElementById('csvInput').addEventListener('change', async (e) => {
-  const file = e.target.files[0]
-  if (!file) return
-  state.file = file
-  const text = await file.text()
-  const { headers, records } = parseCsv(text)
+  const files = [...e.target.files]
+  if (files.length === 0) return
+  let headers = []
+  let records = []
+  const names = []
+  for (const file of files) {
+    const text = await file.text()
+    const parsed = parseCsv(text)
+    if (headers.length === 0) headers = parsed.headers
+    records = records.concat(parsed.records)
+    names.push(file.name)
+  }
   state.headers = headers
   state.records = records
-  fileInfoEl.textContent = `✓ ${file.name} — ${records.length} filas, ${headers.length} columnas`
+  state.sourceFileName = names.join(', ')
+  fileInfoEl.textContent = `✓ ${names.join(' + ')} — ${records.length} filas en total, ${headers.length} columnas`
   generateBtn.disabled = records.length === 0
 })
 
 generateBtn.addEventListener('click', () => {
-  if (!state.file || state.records.length === 0) return
-  const html = buildSkeletonHtml({
+  if (state.records.length === 0) return
+  const html = buildDashboardHtml({
     mode: state.mode,
     headers: state.headers,
     records: state.records,
-    sourceFileName: state.file.name
+    sourceFileName: state.sourceFileName
   })
   downloadFile(MODES[state.mode].defaultFileName, html)
   statusEl.textContent = `✓ Descargado "${MODES[state.mode].defaultFileName}" — súbelo a este repositorio para publicarlo.`

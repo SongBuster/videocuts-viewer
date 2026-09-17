@@ -76,11 +76,14 @@
     </div>
 
     <div class="step">
-      <div class="step-label">2. Fichero CSV</div>
+      <div class="step-label">2. Fichero(s) CSV</div>
       <div class="file-row">
         <label for="csvInput">Elegir CSV...</label>
-        <input id="csvInput" type="file" accept=".csv,text/csv" />
+        <input id="csvInput" type="file" accept=".csv,text/csv" multiple />
         <span id="fileInfo">Ningún fichero elegido</span>
+      </div>
+      <div style="color:#555; font-size:11px; margin-top:6px;">
+        Puedes elegir varios a la vez (ej. un CSV por jornada del mismo rival, o de varios rivales): se juntan todos en una sola página, con un selector de equipo al principio.
       </div>
     </div>
 
@@ -93,10 +96,10 @@
     <div class="how">
       <div class="step-label">Cómo encaja esto en el proceso</div>
       <ol>
-        <li>En VideoCuts: Estadísticas → Configurar exportación CSV → Generar CSV.</li>
-        <li>Aquí: elige el tipo, sube ese CSV y pulsa "Generar página web".</li>
-        <li>Se descarga un .html — súbelo a la carpeta de este repositorio (junto a index.html) y haz commit + push.</li>
-        <li>Queda publicado en la web de estadísticas, junto a los partidos.</li>
+        <li>En VideoCuts: Estadísticas → Configurar exportación CSV (con "Equipo", "ID del corte" e "ID del partido" incluidas) → Generar CSV, uno por partido/jornada.</li>
+        <li>Aquí: elige el tipo, sube todos los CSV que tengas hasta ahora y pulsa "Generar página web".</li>
+        <li>Se descarga un único .html (con todos los equipos y jornadas dentro) — súbelo a la carpeta de este repositorio (junto a index.html), sustituyendo al anterior, y haz commit + push.</li>
+        <li>Queda publicado en la web de estadísticas, junto a los partidos. Al abrirlo, primero se elige el equipo — todo lo demás se filtra sobre ese equipo.</li>
       </ol>
     </div>
   </div>
