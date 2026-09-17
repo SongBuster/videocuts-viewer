@@ -13,7 +13,6 @@
   }
   .tab-btn.active { color: #fff; border-bottom-color: #3b82f6; }
   .tab-panel { min-height: 0; }
-  .aux-text { color: #888; font-size: 13px; }
 
   /* ── Filtros (izquierda) + visualizadores (derecha) ── */
   .dash-layout { display: flex; align-items: flex-start; }
@@ -110,7 +109,7 @@
               <div class="filters-col" id="filtersCol"></div>
             </aside>
             <main class="dash-main">
-              <p class="aux-text" id="auxText"></p>
+              <div class="panel stat-headline" id="statHeadline"></div>
             </main>
           </div>`;
 
@@ -130,7 +129,7 @@
           const filter = createDropdownFilter({
             fieldLabel,
             options: values.map((v) => ({ value: v, label: v })),
-            onChange: (selected) => { activeFilters[key].selected = selected; renderAuxText(); }
+            onChange: (selected) => { activeFilters[key].selected = selected; renderStats(); }
           });
           activeFilters[key] = { getValue: (r) => r[column], selected: [] };
           filtersCol.appendChild(filter.el);
@@ -141,7 +140,7 @@
         const timeFilter = createTreeDropdownFilter({
           fieldLabel: 'Tiempo de juego',
           groups: buildTimeTree(),
-          onChange: (selected) => { activeFilters.tiempo.selected = selected; renderAuxText(); }
+          onChange: (selected) => { activeFilters.tiempo.selected = selected; renderStats(); }
         });
         activeFilters.tiempo = { getValue: (r) => computeTimeBucketKey(r), selected: [] };
         filtersCol.appendChild(timeFilter.el);
@@ -153,7 +152,7 @@
         const playerFilter = createDropdownFilter({
           fieldLabel: 'Jugador',
           options: playerOptions,
-          onChange: (selected) => { activeFilters.jugador.selected = selected; renderAuxText(); }
+          onChange: (selected) => { activeFilters.jugador.selected = selected; renderStats(); }
         });
         activeFilters.jugador = { getValue: (r) => r[COL_PLAYER], selected: [] };
         filtersCol.appendChild(playerFilter.el);
@@ -174,20 +173,35 @@
             fieldLabel: 'Fase de juego',
             options: phaseOptions,
             showSearch: false,
-            onChange: (selected) => { activeFilters.fase.selected = selected; renderAuxText(); }
+            onChange: (selected) => { activeFilters.fase.selected = selected; renderStats(); }
           });
           activeFilters.fase = { getValue: (r) => r[COL_PHASE], selected: [] };
           filtersCol.appendChild(phaseFilter.el);
         }
 
-        function renderAuxText() {
+        function figure(n, label) {
+          return `<div class="figure"><span class="n">${n}</span><span class="l">${label}</span></div>`;
+        }
+
+        function renderStats() {
           const filtered = records.filter((r) =>
             Object.values(activeFilters).every(({ getValue, selected }) => selected.length === 0 || selected.includes(getValue(r)))
           );
-          document.getElementById('auxText').textContent =
-            `${filtered.length} de ${records.length} eventos — de prueba, mientras decidimos qué mostrar aquí.`;
+
+          const lanzamientos = filtered.length;
+          const goles = filtered.filter((r) => /gol/i.test(r['Resultado'] || '')).length;
+          const efectividad = lanzamientos > 0 ? Math.round((goles / lanzamientos) * 100) : 0;
+          const partidosDistintos = new Set(filtered.map((r) => r[COL_CODE])).size || 1;
+          const golesPorPartido = goles / partidosDistintos;
+          const golesPorPartidoLabel = Number.isInteger(golesPorPartido) ? golesPorPartido : golesPorPartido.toFixed(1);
+
+          document.getElementById('statHeadline').innerHTML =
+            figure(lanzamientos, 'lanzamientos') +
+            figure(goles, 'goles') +
+            figure(`${efectividad}%`, 'efectividad') +
+            figure(golesPorPartidoLabel, 'goles por partido');
         }
-        renderAuxText();
+        renderStats();
       }
 
       // Portero: de momento, deliberadamente sin contenido.
