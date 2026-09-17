@@ -127,6 +127,8 @@ export function createDropdownFilter({ fieldLabel, options, onChange }) {
 //   })
 export function createTreeDropdownFilter({ fieldLabel, groups, onChange }) {
   let selected = [] // vacío = todos; si no, lista de VALORES DE HOJA seleccionados
+  const expanded = {} // group.value -> boolean; por defecto, todos expandidos
+  for (const g of groups) expanded[g.value] = true
 
   const allLeafValues = groups.flatMap((g) => g.children.map((c) => c.value))
 
@@ -180,18 +182,22 @@ export function createTreeDropdownFilter({ fieldLabel, groups, onChange }) {
   function renderList() {
     listEl.innerHTML = groups.map((g) => {
       const state = groupState(g)
-      const childrenHtml = g.children.map((c) => `
+      const isOpen = expanded[g.value]
+      const childrenHtml = isOpen ? g.children.map((c) => `
         <label class="dd-filter-row dd-filter-row-child" data-leaf="${escapeHtml(c.value)}">
           <input type="checkbox" ${isAllSelected() || selected.includes(c.value) ? 'checked' : ''} />
           <span class="dd-filter-row-label">${escapeHtml(c.label)}</span>
           <button type="button" class="dd-filter-only">SOLO</button>
-        </label>`).join('')
+        </label>`).join('') : ''
       return `
-        <label class="dd-filter-row dd-filter-row-group" data-group="${escapeHtml(g.value)}">
-          <input type="checkbox" data-state="${state}" ${state === 'checked' ? 'checked' : ''} />
-          <span class="dd-filter-row-label">${escapeHtml(g.label)}</span>
+        <div class="dd-filter-row dd-filter-row-group" data-group="${escapeHtml(g.value)}">
+          <button type="button" class="dd-filter-expand" data-group-toggle="${escapeHtml(g.value)}">${isOpen ? '▾' : '▸'}</button>
+          <label class="dd-filter-row-grouplabel">
+            <input type="checkbox" data-state="${state}" ${state === 'checked' ? 'checked' : ''} />
+            <span class="dd-filter-row-label">${escapeHtml(g.label)}</span>
+          </label>
           <button type="button" class="dd-filter-only">SOLO</button>
-        </label>
+        </div>
         ${childrenHtml}`
     }).join('')
 
@@ -214,6 +220,11 @@ export function createTreeDropdownFilter({ fieldLabel, groups, onChange }) {
         renderList()
         updateButtonState()
         onChange(selected)
+      })
+      row.querySelector('.dd-filter-expand').addEventListener('click', (e) => {
+        e.preventDefault()
+        expanded[groupValue] = !expanded[groupValue]
+        renderList()
       })
     })
 

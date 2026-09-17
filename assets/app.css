@@ -166,6 +166,11 @@ button { font-family: inherit; }
 .dd-filter-row:hover .dd-filter-only { display: inline-block; }
 .dd-filter-list { max-height: 260px; overflow-y: auto; }
 .dd-filter-empty { color: #555; font-size: 12px; padding: 10px 6px; text-align: center; }
-.dd-filter-row-group { font-weight: 600; }
+.dd-filter-row-group { font-weight: 600; padding-left: 2px; }
 .dd-filter-row-child { padding-left: 26px; }
 .dd-filter-row-child .dd-filter-row-label { color: #bbb; }
+.dd-filter-expand {
+  background: none; border: none; color: #888; cursor: pointer; font-size: 10px;
+  width: 14px; flex-shrink: 0; padding: 0; text-align: center;
+}
+.dd-filter-row-grouplabel { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; cursor: pointer; }

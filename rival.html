@@ -128,7 +128,6 @@
         }
 
         addFilter('partido', 'Partido', COL_CODE);
-        addFilter('jugador', 'Jugador', COL_PLAYER);
 
         const timeFilter = createTreeDropdownFilter({
           fieldLabel: 'Tiempo de juego',
@@ -137,6 +136,8 @@
         });
         activeFilters.tiempo = { getValue: (r) => computeTimeBucketKey(r), selected: [] };
         filtersCol.appendChild(timeFilter.el);
+
+        addFilter('jugador', 'Jugador', COL_PLAYER);
 
         function renderAuxText() {
           const filtered = records.filter((r) =>
