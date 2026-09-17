@@ -200,9 +200,10 @@
           filtersCol.appendChild(phaseFilter.el);
         }
 
-        // Tipo de lanzamiento: distingue los lanzamientos de 7 metros (sin
-        // oposición real, efectividad muy distinta) de los de juego. Sin
-        // buscador y ordenado por frecuencia, igual que Fase de juego.
+        // Modalidad: distingue los lanzamientos de 7 metros (sin oposición
+        // real, efectividad muy distinta) de los de juego. Se llama
+        // "Modalidad" y no "Tipo de lanzamiento" para no confundirlo con el
+        // filtro de Tipo de lanzamiento (Potencia/Colocado/...) de más abajo.
         const COL_EVENT_TYPE = 'Tipo de evento';
         const EVENT_TYPE_LABELS = { 'Lanzamiento': 'Juego', 'Lanzamiento 7M': '7 metros' };
         const eventTypeCounts = new Map();
@@ -215,7 +216,7 @@
           .map(([value]) => ({ value, label: EVENT_TYPE_LABELS[value] || value }));
         if (eventTypeOptions.length > 1) {
           const eventTypeFilter = createDropdownFilter({
-            fieldLabel: 'Tipo de lanzamiento',
+            fieldLabel: 'Modalidad',
             options: eventTypeOptions,
             showSearch: false,
             onChange: (selected) => { activeFilters.tipoEvento.selected = selected; renderStats(); }
@@ -223,6 +224,31 @@
           activeFilters.tipoEvento = { getValue: (r) => r[COL_EVENT_TYPE], selected: [] };
           filtersCol.appendChild(eventTypeFilter.el);
         }
+
+        // Filtros simples por columna (sin buscador, ordenados por
+        // frecuencia descendente): Mano y Tipo de lanzamiento.
+        function addSimpleFilter(key, fieldLabel, column) {
+          const counts = new Map();
+          for (const r of records) {
+            const v = r[column];
+            if (v) counts.set(v, (counts.get(v) || 0) + 1);
+          }
+          const options = [...counts.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([value]) => ({ value, label: value }));
+          if (options.length <= 1) return;
+          const filter = createDropdownFilter({
+            fieldLabel,
+            options,
+            showSearch: false,
+            onChange: (selected) => { activeFilters[key].selected = selected; renderStats(); }
+          });
+          activeFilters[key] = { getValue: (r) => r[column], selected: [] };
+          filtersCol.appendChild(filter.el);
+        }
+
+        addSimpleFilter('mano', 'Mano', 'Mano');
+        addSimpleFilter('tipoLanzamiento', 'Tipo de lanzamiento', 'Tipo de lanzamiento');
 
         // Zona de lanzamiento y zona de portería no tienen desplegable propio
         // en la columna de filtros: se activan solo al pulsar sobre el
