@@ -158,6 +158,28 @@
         activeFilters.jugador = { getValue: (r) => r[COL_PLAYER], selected: [] };
         filtersCol.appendChild(playerFilter.el);
 
+        // Fase de juego: sin buscador, y ordenado por nº de eventos (el más
+        // frecuente primero), no alfabético.
+        const COL_PHASE = 'Fase de juego';
+        const phaseCounts = new Map();
+        for (const r of records) {
+          const v = r[COL_PHASE];
+          if (v) phaseCounts.set(v, (phaseCounts.get(v) || 0) + 1);
+        }
+        const phaseOptions = [...phaseCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([value]) => ({ value, label: value }));
+        if (phaseOptions.length > 0) {
+          const phaseFilter = createDropdownFilter({
+            fieldLabel: 'Fase de juego',
+            options: phaseOptions,
+            showSearch: false,
+            onChange: (selected) => { activeFilters.fase.selected = selected; renderAuxText(); }
+          });
+          activeFilters.fase = { getValue: (r) => r[COL_PHASE], selected: [] };
+          filtersCol.appendChild(phaseFilter.el);
+        }
+
         function renderAuxText() {
           const filtered = records.filter((r) =>
             Object.values(activeFilters).every(({ getValue, selected }) => selected.length === 0 || selected.includes(getValue(r)))

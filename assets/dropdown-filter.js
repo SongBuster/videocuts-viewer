@@ -15,7 +15,7 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 }
 
-export function createDropdownFilter({ fieldLabel, options, onChange }) {
+export function createDropdownFilter({ fieldLabel, options, onChange, showSearch = true }) {
   let selected = [] // vacío = todos
   let searchText = ''
 
@@ -24,7 +24,7 @@ export function createDropdownFilter({ fieldLabel, options, onChange }) {
   root.innerHTML = `
     <button type="button" class="dd-filter-btn">${escapeHtml(fieldLabel)}</button>
     <div class="dd-filter-panel" hidden>
-      <input type="text" class="dd-filter-search" placeholder="Buscar..." />
+      ${showSearch ? '<input type="text" class="dd-filter-search" placeholder="Buscar..." />' : ''}
       <label class="dd-filter-row dd-filter-allrow">
         <input type="checkbox" class="dd-filter-allcheck" />
         <span>Seleccionar todos</span>
@@ -91,14 +91,14 @@ export function createDropdownFilter({ fieldLabel, options, onChange }) {
     onChange(selected)
   })
 
-  searchInput.addEventListener('input', (e) => { searchText = e.target.value; renderList() })
+  if (searchInput) searchInput.addEventListener('input', (e) => { searchText = e.target.value; renderList() })
 
   btn.addEventListener('click', (e) => {
     e.stopPropagation()
     const willOpen = panel.hidden
     document.querySelectorAll('.dd-filter-panel').forEach((p) => { p.hidden = true })
     panel.hidden = !willOpen
-    if (willOpen) searchInput.focus()
+    if (willOpen && searchInput) searchInput.focus()
   })
 
   panel.addEventListener('click', (e) => e.stopPropagation())
