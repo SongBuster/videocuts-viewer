@@ -35,7 +35,7 @@ export const GOAL_LABELS = {
   'out-top': 'Fuera arriba', 'out-left': 'Fuera derecha', 'out-right': 'Fuera izquierda'
 }
 
-const GOAL_LAYOUT = { cols: 3, cellW: 52, cellH: 38, post: 6, outSide: 30, outTop: 26 }
+export const GOAL_LAYOUT = { cols: 3, cellW: 52, cellH: 38, post: 6, outSide: 30, outTop: 26 }
 
 function pts(points) {
   return points.map((p) => `${p.x},${p.y}`).join(' ')

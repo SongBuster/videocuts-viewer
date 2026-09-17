@@ -55,11 +55,12 @@
 <script type="module">
   import { fetchJSON, escapeHtml } from './assets/app.js'
   import { createDropdownFilter, createTreeDropdownFilter, buildTimeTree, computeTimeBucketKey } from './assets/dropdown-filter.js'
-  import { SHOT_ZONES, COURT_W, COURT_H } from './assets/zones.js'
+  import { SHOT_ZONES, COURT_W, COURT_H, GOAL_INNER_ZONES, GOAL_LABELS, GOAL_LAYOUT } from './assets/zones.js'
 
   const COL_PLAYER = 'Jugador'
   const COL_CODE = 'Codigo'
   const COL_POSITION = 'Posición'
+  const COL_GOAL = 'Portería'
 
   // El CSV trae "#33 NOMBRE" — para el desplegable interesa ordenar por
   // dorsal numérico (no como texto: "#10" iría antes que "#2") y sin el "#",
@@ -123,6 +124,10 @@
               <div class="panel">
                 <div class="panel-title">Zona de lanzamiento</div>
                 <div id="zonePositionChart"></div>
+              </div>
+              <div class="panel">
+                <div class="panel-title">Zona de portería</div>
+                <div id="goalZoneChart"></div>
               </div>
             </main>
           </div>`;
@@ -217,6 +222,7 @@
 
           renderPlayerComparison(filtered);
           renderZonePositionChart(filtered);
+          renderGoalZoneChart(filtered);
         }
 
         // ── Comparativa de jugadores: solo tiene sentido con más de uno a la
@@ -327,13 +333,21 @@
         // Rojo (0%) → amarillo (50%) → verde (100%), mismos tonos que la
         // paleta de estado (nunca reutilizados como color de serie normal).
         function lerpChannel(a, b, t) { return Math.round(a + (b - a) * t); }
-        function mixColor(c1, c2, t) {
-          return `rgb(${lerpChannel(c1[0], c2[0], t)},${lerpChannel(c1[1], c2[1], t)},${lerpChannel(c1[2], c2[2], t)})`;
+        function mixColorRGB(c1, c2, t) {
+          return [lerpChannel(c1[0], c2[0], t), lerpChannel(c1[1], c2[1], t), lerpChannel(c1[2], c2[2], t)];
         }
-        function efficiencyColor(pct) {
+        function rgbStr(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+        function efficiencyColorRGB(pct) {
           const RED = [208, 59, 59], YELLOW = [250, 178, 25], GREEN = [12, 163, 12];
           const t = Math.max(0, Math.min(100, pct));
-          return t <= 50 ? mixColor(RED, YELLOW, t / 50) : mixColor(YELLOW, GREEN, (t - 50) / 50);
+          return t <= 50 ? mixColorRGB(RED, YELLOW, t / 50) : mixColorRGB(YELLOW, GREEN, (t - 50) / 50);
+        }
+        function efficiencyColor(pct) { return rgbStr(efficiencyColorRGB(pct)); }
+        // Sobre amarillo (claro) el texto blanco no contrasta lo suficiente;
+        // se elige blanco o tinta oscura según la luminancia del propio relleno.
+        function textColorOn(rgb) {
+          const luminance = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+          return luminance > 150 ? '#1a1a1a' : '#fff';
         }
 
         function renderZonePositionChart(filtered) {
@@ -371,6 +385,70 @@
             <svg viewBox="0 0 ${COURT_W} ${COURT_H}" class="zone-bubble-svg" role="img" aria-label="Zona de lanzamiento: lanzamientos y goles por zona">
               <image href="assets/half-court.png" x="0" y="0" width="${COURT_W}" height="${COURT_H}" />
               ${bubblesSvg}
+            </svg>`;
+        }
+
+        // ── Zona de portería: rejilla 3x3 + franjas de "fuera", misma
+        // geometría que GoalZonePicker.tsx. Aquí sí se colorea la propia
+        // zona (no un círculo, la rejilla ya está a tamaño fijo) con el
+        // mismo degradado rojo→amarillo→verde por efectividad y la misma
+        // etiqueta "goles/lanzamientos (%)".
+        const GOAL_LABEL_TO_CODE = Object.fromEntries(Object.entries(GOAL_LABELS).map(([code, label]) => [label, code]));
+
+        function renderGoalZoneChart(filtered) {
+          const byZone = new Map();
+          for (const r of filtered) {
+            const code = GOAL_LABEL_TO_CODE[r[COL_GOAL]];
+            if (!code) continue;
+            const entry = byZone.get(code) || { lanzamientos: 0, goles: 0 };
+            entry.lanzamientos++;
+            if (/gol/i.test(r['Resultado'] || '')) entry.goles++;
+            byZone.set(code, entry);
+          }
+
+          const { cols, cellW, cellH, post, outSide, outTop } = GOAL_LAYOUT;
+          const gridW = cols * cellW;
+          const gridH = 3 * cellH;
+          const gridX = outSide + post;
+          const gridY = outTop + post;
+          const width = gridW + post * 2 + outSide * 2;
+          const height = gridH + post * 2 + outTop;
+
+          function cellSvg(code, x, y, w, h) {
+            const data = byZone.get(code);
+            if (!data || data.lanzamientos === 0) {
+              return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#1c1c1c" stroke="#333" stroke-width="1" />`;
+            }
+            const efectividad = Math.round((data.goles / data.lanzamientos) * 100);
+            const rgb = efficiencyColorRGB(efectividad);
+            const fill = rgbStr(rgb);
+            const textColor = textColorOn(rgb);
+            const cx = x + w / 2, cy = y + h / 2;
+            return `
+              <g>
+                <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="${fill}" stroke-width="1">
+                  <title>${escapeHtml(GOAL_LABELS[code])} — ${data.goles}/${data.lanzamientos} (${efectividad}%)</title>
+                </rect>
+                <text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700">${data.goles}/${data.lanzamientos}</text>
+                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10">(${efectividad}%)</text>
+              </g>`;
+          }
+
+          const inner = GOAL_INNER_ZONES.map((code, i) => {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            return cellSvg(code, gridX + col * cellW, gridY + row * cellH, cellW, cellH);
+          }).join('');
+
+          const outer = cellSvg('out-top', gridX, 0, gridW, outTop) +
+            cellSvg('out-left', 0, gridY, outSide, gridH) +
+            cellSvg('out-right', gridX + gridW, gridY, outSide, gridH);
+
+          document.getElementById('goalZoneChart').innerHTML = `
+            <svg viewBox="0 0 ${width} ${height}" class="goal-zone-svg" role="img" aria-label="Zona de portería: lanzamientos y goles por zona">
+              ${outer}
+              <rect x="${gridX - post / 2}" y="${gridY - post / 2}" width="${gridW + post}" height="${gridH + post}" fill="none" stroke="#666" stroke-width="${post}" />
+              ${inner}
             </svg>`;
         }
 
