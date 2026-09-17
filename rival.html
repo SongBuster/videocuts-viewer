@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rival — VideoCuts</title>
+<link rel="stylesheet" href="assets/app.css" />
+<style>
+  .tabs { display: flex; gap: 6px; padding: 0 20px; border-bottom: 1px solid #2a2a2a; }
+  .tab-btn {
+    background: transparent; border: none; border-bottom: 2px solid transparent;
+    color: #888; padding: 12px 6px; font-size: 13px; cursor: pointer;
+  }
+  .tab-btn.active { color: #fff; border-bottom-color: #3b82f6; }
+  .tab-panel { padding: 24px 20px; }
+  .aux-text { color: #888; font-size: 13px; }
+</style>
+</head>
+<body>
+  <header class="site-header">
+    <a class="back" href="index.html">← Rivales</a>
+    <h1 id="teamName">Cargando…</h1>
+  </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="jugadores">Jugadores</button>
+    <button class="tab-btn" data-tab="portero">Portero</button>
+  </div>
+  <div class="tab-panel" id="tab-jugadores"></div>
+  <div class="tab-panel" id="tab-portero" hidden></div>
+
+<script type="module">
+  import { fetchJSON, escapeHtml } from './assets/app.js'
+
+  const params = new URLSearchParams(location.search)
+  const team = params.get('equipo')
+  const teamNameEl = document.getElementById('teamName')
+  const panels = {
+    jugadores: document.getElementById('tab-jugadores'),
+    portero: document.getElementById('tab-portero')
+  }
+
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      for (const key of Object.keys(panels)) panels[key].hidden = key !== btn.dataset.tab;
+    });
+  });
+
+  if (!team) {
+    teamNameEl.textContent = 'Falta el rival';
+    panels.jugadores.innerHTML = '<div class="empty-state">Esta página necesita un ?equipo=... en la URL. Entra desde la portada.</div>';
+  } else {
+    teamNameEl.textContent = team;
+    document.title = `${team} — VideoCuts`;
+    try {
+      const index = await fetchJSON('data/lanzamientos/index.json');
+      const entries = index.filter((e) => e.team === team);
+
+      const jugadoresEntries = entries.filter((e) => e.mode === 'jugadores');
+      if (jugadoresEntries.length === 0) {
+        panels.jugadores.innerHTML = '<div class="empty-state">Sin datos de jugadores para este rival todavía.</div>';
+      } else {
+        const datasets = await Promise.all(jugadoresEntries.map((e) => fetchJSON(`data/lanzamientos/${e.id}.json`)));
+        const totalRows = datasets.reduce((acc, d) => acc + d.records.length, 0);
+        const jornadas = jugadoresEntries.map((e) => e.code).join(', ');
+        panels.jugadores.innerHTML = `<p class="aux-text">${totalRows} eventos cargados (jornadas: ${escapeHtml(jornadas)}) — de prueba, mientras decidimos qué mostrar aquí.</p>`;
+      }
+
+      // Portero: de momento, deliberadamente sin contenido.
+      panels.portero.innerHTML = '';
+    } catch (err) {
+      panels.jugadores.innerHTML = `<div class="empty-state">No se han podido cargar los datos. ${escapeHtml(err.message)}</div>`;
+    }
+  }
+</script>
+</body>
+</html>

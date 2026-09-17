@@ -9,37 +9,42 @@
 <body>
   <header class="site-header">
     <h1>📊 VideoCuts</h1>
-    <span class="meta">Cortes y estadísticas de los partidos analizados</span>
-    <span class="spacer"></span>
-    <a class="nav-link" href="jugadores.html">Estadísticas de jugadores →</a>
-    <a class="nav-link" href="estadisticas.html">Ver estadísticas combinadas →</a>
+    <span class="meta">Elige el rival para ver sus estadísticas</span>
   </header>
   <div class="home-wrap">
-    <p class="intro">Elige un partido para ver sus estadísticas y revisar los cortes con el vídeo, o entra en las estadísticas combinadas para ver todos los partidos publicados a la vez.</p>
-    <div id="matches" class="match-grid"></div>
+    <p class="intro">Todo lo que veas a continuación está filtrado por el rival que elijas aquí.</p>
+    <div id="rivals" class="match-grid"></div>
   </div>
 
 <script type="module">
-  import { fetchJSON, escapeHtml, formatDateEs } from './assets/app.js'
+  import { fetchJSON, escapeHtml } from './assets/app.js'
 
-  const el = document.getElementById('matches')
+  const el = document.getElementById('rivals')
   try {
-    const index = await fetchJSON('data/index.json')
-    if (index.length === 0) {
-      el.innerHTML = '<div class="empty-state">Todavía no se ha publicado ningún partido.</div>'
+    const index = await fetchJSON('data/lanzamientos/index.json')
+    const byTeam = new Map()
+    for (const entry of index) {
+      const t = byTeam.get(entry.team) || { team: entry.team, rows: 0, jornadas: new Set() }
+      t.rows += entry.rowCount
+      t.jornadas.add(entry.code)
+      byTeam.set(entry.team, t)
+    }
+    const rivals = [...byTeam.values()].sort((a, b) => a.team.localeCompare(b.team))
+
+    if (rivals.length === 0) {
+      el.innerHTML = '<div class="empty-state">Todavía no hay ningún rival cargado. Genera y sube el primer CSV con el generador.</div>'
     } else {
-      el.innerHTML = index.map((m) => `
-        <a class="match-card" href="partido.html?id=${encodeURIComponent(m.id)}">
-          <div class="name">${escapeHtml(m.matchName)}</div>
-          <div class="sub">${[formatDateEs(m.date), m.competition, [m.homeTeam, m.awayTeam].filter(Boolean).join(' vs ')].filter(Boolean).map(escapeHtml).join(' · ')}</div>
+      el.innerHTML = rivals.map((r) => `
+        <a class="match-card" href="rival.html?equipo=${encodeURIComponent(r.team)}">
+          <div class="name">${escapeHtml(r.team)}</div>
           <div class="figures">
-            <span><b>${m.totalEvents}</b> jugadas</span>
-            <span><b>${m.playableClips}</b> con vídeo</span>
+            <span><b>${r.jornadas.size}</b> jornada${r.jornadas.size === 1 ? '' : 's'}</span>
+            <span><b>${r.rows}</b> filas</span>
           </div>
         </a>`).join('')
     }
   } catch (err) {
-    el.innerHTML = `<div class="empty-state">No se ha podido cargar el listado de partidos.<br>${escapeHtml(err.message)}</div>`
+    el.innerHTML = `<div class="empty-state">Todavía no hay ningún rival cargado. Genera y sube el primer CSV con el generador.</div>`
   }
 </script>
 </body>

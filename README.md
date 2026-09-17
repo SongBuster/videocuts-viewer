@@ -1,41 +1,38 @@
 # videocuts-viewer
 
-Web de estadísticas y cortes de partido de VideoCuts, alojada con GitHub Pages.
+Web de estadísticas de VideoCuts, alojada con GitHub Pages. Organizada por
+rival: se elige un equipo y todo lo demás se filtra sobre él.
 
 ## Estructura
 
-- `index.html` — listado de partidos publicados.
-- `partido.html?id=...` — estadísticas y cortes (con vídeo de YouTube) de un partido.
-- `corte.html?id=...&evento=...` — detalle de un único corte (vídeo grande + ficha), pensado para enlazar desde fuera (ej. desde `jugadores.html`/`portero.html`).
-- `estadisticas.html` — vista combinada de todos los partidos publicados.
-- `data/` — datos de cada partido (JSON), publicados desde VideoCuts (Estadísticas → Publicar en la web).
-- `generador/` — herramienta local para generar `jugadores.html`/`portero.html` a partir de uno o varios CSV (ver más abajo).
-- `jugadores.html` / `portero.html` — estadísticas de lanzamientos, generadas con `generador/` (no desde VideoCuts directamente).
+- `index.html` — portada: lista de rivales de los que hay datos.
+- `rival.html?equipo=...` — página de un rival, con pestañas Jugadores/Portero.
+- `data/lanzamientos/index.json` — índice de todos los CSV publicados (equipo, jornada, tipo, nº de filas).
+- `data/lanzamientos/<id>.json` — datos de un CSV concreto (un equipo + una jornada + un tipo).
+- `generador/` — herramienta local para generar esos ficheros a partir de un CSV (ver más abajo).
 
-## Estadísticas de jugadores y de portero (a partir de CSV)
+> Ficheros de una etapa anterior del proyecto (`partido.html`, `estadisticas.html`,
+> `corte.html`, `data/*.json` de partidos) se mantienen sin tocar por ahora, pero
+> ya no forman parte del flujo principal — se retomarán más adelante.
 
-Estas dos páginas son un caso aparte: no se publican desde el botón de VideoCuts,
-sino a partir de **CSV exportados desde VideoCuts** (Estadísticas → Configurar
-exportación CSV → Generar CSV) — uno para los lanzamientos del equipo analizado
-("jugadores"), otro para los lanzamientos recibidos por el portero analizado
-("portero"). La columna "Equipo" es la clave: cada CSV es de UN equipo analizado
-en UNA jornada, y se van juntando todos en una sola página.
+## Cómo añadir un partido/jornada nuevo
 
-Proceso:
-
-1. En VideoCuts, configura la exportación CSV incluyendo **Equipo**, **ID del
-   corte** e **ID del partido** (además de las columnas propias de cada
-   plantilla) → Generar CSV, uno por partido.
+1. En VideoCuts: Estadísticas → Configurar exportación CSV (con la columna
+   **Equipo** incluida, además de las propias de la plantilla) → Generar CSV.
 2. Abre `generador/index.html` (doble clic, sin instalar nada) — también
    disponible en `https://songbuster.github.io/videocuts-viewer/generador/`.
-3. Elige el tipo (Jugadores/Portero), selecciona **todos** los CSV que tengas
-   hasta ahora (de todos los equipos/jornadas — se pueden elegir varios a la
-   vez) y pulsa "Generar página web".
-4. Se descarga un único `.html` — súbelo a este repositorio (junto a
-   `index.html`) como `jugadores.html` o `portero.html`, **sustituyendo al que
-   hubiera antes**, y haz commit + push.
+3. Elige el tipo (Jugadores/Portero), sube el CSV y pulsa "Generar datos".
+   El generador consulta el índice ya publicado en la web para no duplicar
+   nada si repites un equipo/jornada.
+4. Se descargan 1-2 ficheros pequeños: `<id>.json` (los datos de ese
+   equipo+jornada) e `index.json` (el índice actualizado). Súbelos a
+   `data/lanzamientos/` en este repositorio y haz commit + push.
+5. El rival ya aparece en la portada.
 
-La página generada, al abrirse, pide primero **qué equipo analizar** — el
-resto de filtros, gráficos y la tabla de detalle se calculan solo sobre ese
-equipo. La tabla de detalle enlaza cada fila a `corte.html` con el vídeo de
-ese corte exacto (usando las columnas técnicas de ID).
+## Estado actual (deliberadamente mínimo, en construcción)
+
+La pestaña **Jugadores** de `rival.html` solo muestra de momento cuántos
+eventos hay cargados, a modo de prueba de que el proceso de datos funciona
+— los filtros/gráficos/tabla se irán añadiendo. La pestaña **Portero** está
+vacía a propósito: el CSV de portero de etapas anteriores no encaja con
+este diseño y se redefinirá más adelante.

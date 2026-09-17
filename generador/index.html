@@ -53,10 +53,10 @@
   <div class="card">
     <h1>📊 Generador de estadísticas</h1>
     <p class="intro">
-      Convierte un CSV exportado desde VideoCuts en una página web para publicar en
+      Convierte un CSV exportado desde VideoCuts en los ficheros de datos que necesita
       <a href="../index.html" style="color:#3b82f6">la web de estadísticas</a>.
       Todo ocurre en tu navegador — el CSV no sale de tu ordenador hasta que tú subas
-      la página generada.
+      los ficheros generados.
     </p>
 
     <div class="step">
@@ -83,23 +83,23 @@
         <span id="fileInfo">Ningún fichero elegido</span>
       </div>
       <div style="color:#555; font-size:11px; margin-top:6px;">
-        Puedes elegir varios a la vez (ej. un CSV por jornada del mismo rival, o de varios rivales): se juntan todos en una sola página, con un selector de equipo al principio.
+        Normalmente subirás el CSV de un solo partido/jornada, pero puedes elegir varios a la vez si tienes más de uno pendiente.
       </div>
     </div>
 
     <div class="step">
       <div class="step-label">3. Generar</div>
-      <button id="generateBtn" disabled>Generar página web</button>
+      <button id="generateBtn" disabled>Generar datos</button>
       <div id="status"></div>
     </div>
 
     <div class="how">
       <div class="step-label">Cómo encaja esto en el proceso</div>
       <ol>
-        <li>En VideoCuts: Estadísticas → Configurar exportación CSV (con "Equipo", "ID del corte" e "ID del partido" incluidas) → Generar CSV, uno por partido/jornada.</li>
-        <li>Aquí: elige el tipo, sube todos los CSV que tengas hasta ahora y pulsa "Generar página web".</li>
-        <li>Se descarga un único .html (con todos los equipos y jornadas dentro) — súbelo a la carpeta de este repositorio (junto a index.html), sustituyendo al anterior, y haz commit + push.</li>
-        <li>Queda publicado en la web de estadísticas, junto a los partidos. Al abrirlo, primero se elige el equipo — todo lo demás se filtra sobre ese equipo.</li>
+        <li>En VideoCuts: Estadísticas → Configurar exportación CSV (con "Equipo" incluida) → Generar CSV, uno por partido/jornada.</li>
+        <li>Aquí: elige el tipo, sube ese CSV y pulsa "Generar datos" — el generador mira solo lo que ya está publicado en la web para no duplicar nada.</li>
+        <li>Se descargan un par de ficheros pequeños (los datos de este rival/jornada + el índice actualizado) — súbelos a la carpeta <code>data/lanzamientos/</code> de este repositorio y haz commit + push.</li>
+        <li>Ese rival aparece en la portada de la web — se entra en él y se ve lo suyo.</li>
       </ol>
     </div>
   </div>
