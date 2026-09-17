@@ -110,6 +110,14 @@
             </aside>
             <main class="dash-main">
               <div class="panel stat-headline" id="statHeadline"></div>
+              <div class="panel" id="playerComparisonPanel" hidden>
+                <div class="panel-title">Comparativa de jugadores</div>
+                <div class="chart-legend">
+                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#3b82f6"></span>Lanzamientos</span>
+                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
+                </div>
+                <div id="playerComparisonChart"></div>
+              </div>
             </main>
           </div>`;
 
@@ -200,6 +208,98 @@
             figure(goles, 'goles') +
             figure(`${efectividad}%`, 'efectividad') +
             figure(golesPorPartidoLabel, 'goles por partido');
+
+          renderPlayerComparison(filtered);
+        }
+
+        // ── Comparativa de jugadores: solo tiene sentido con más de uno a la
+        // vista (según el filtro de Jugador y el resto de filtros activos).
+        function niceMax(value) {
+          return value <= 0 ? 5 : Math.ceil(value / 5) * 5;
+        }
+
+        function renderPlayerComparison(filtered) {
+          const panel = document.getElementById('playerComparisonPanel');
+          const byPlayer = new Map();
+          for (const r of filtered) {
+            const raw = r[COL_PLAYER];
+            if (!raw) continue;
+            const entry = byPlayer.get(raw) || { lanzamientos: 0, goles: 0 };
+            entry.lanzamientos++;
+            if (/gol/i.test(r['Resultado'] || '')) entry.goles++;
+            byPlayer.set(raw, entry);
+          }
+
+          if (byPlayer.size <= 1) { panel.hidden = true; return; }
+          panel.hidden = false;
+
+          const players = [...byPlayer.entries()]
+            .map(([raw, { lanzamientos, goles }]) => {
+              const { dorsal, label } = parsePlayer(raw);
+              return {
+                fullLabel: label,
+                dorsalLabel: String(dorsal),
+                lanzamientos,
+                goles,
+                efectividad: lanzamientos > 0 ? Math.round((goles / lanzamientos) * 100) : 0
+              };
+            })
+            .sort((a, b) => b.lanzamientos - a.lanzamientos);
+
+          document.getElementById('playerComparisonChart').innerHTML = buildPlayerComparisonSVG(players);
+        }
+
+        function buildPlayerComparisonSVG(players) {
+          const W = 800, H = 300;
+          const marginTop = 26, marginBottom = 34, marginLeft = 30, marginRight = 10;
+          const plotW = W - marginLeft - marginRight;
+          const plotH = H - marginTop - marginBottom;
+          const n = players.length;
+          const groupW = plotW / n;
+          const barW = Math.min(24, groupW * 0.32);
+          const gap = 2;
+          const axisMax = niceMax(Math.max(...players.map((p) => p.lanzamientos)));
+          const COLOR_LANZ = '#3b82f6';
+          const COLOR_GOL = '#d95926';
+          const TEXT_MUTED = '#898781';
+          const TEXT_SECONDARY = '#c3c2b7';
+          const GRID = '#2c2c2a';
+          const AXIS = '#383835';
+
+          let gridSvg = '';
+          for (let v = 0; v <= axisMax; v += 5) {
+            const y = marginTop + plotH - (v / axisMax) * plotH;
+            gridSvg += `<line x1="${marginLeft}" y1="${y}" x2="${W - marginRight}" y2="${y}" stroke="${v === 0 ? AXIS : GRID}" stroke-width="1" />`;
+            gridSvg += `<text x="${marginLeft - 6}" y="${y}" text-anchor="end" dominant-baseline="middle" fill="${TEXT_MUTED}" font-size="10">${v}</text>`;
+          }
+
+          let barsSvg = '';
+          let labelsSvg = '';
+          players.forEach((p, i) => {
+            const centerX = marginLeft + i * groupW + groupW / 2;
+            const lanzH = (p.lanzamientos / axisMax) * plotH;
+            const golH = (p.goles / axisMax) * plotH;
+            const lanzY = marginTop + plotH - lanzH;
+            const golY = marginTop + plotH - golH;
+            const lanzX = centerX - barW - gap / 2;
+            const golX = centerX + gap / 2;
+
+            barsSvg += `<rect x="${lanzX}" y="${lanzY}" width="${barW}" height="${Math.max(0, lanzH)}" rx="4" fill="${COLOR_LANZ}"><title>${escapeHtml(p.fullLabel)} — Lanzamientos: ${p.lanzamientos}</title></rect>`;
+            barsSvg += `<rect x="${golX}" y="${golY}" width="${barW}" height="${Math.max(0, golH)}" rx="4" fill="${COLOR_GOL}"><title>${escapeHtml(p.fullLabel)} — Goles: ${p.goles}</title></rect>`;
+
+            const topY = Math.min(lanzY, golY);
+            labelsSvg += `<text x="${centerX}" y="${Math.max(marginTop - 8, topY - 6)}" text-anchor="middle" fill="${TEXT_SECONDARY}" font-size="10">${p.goles}/${p.lanzamientos} (${p.efectividad}%)</text>`;
+
+            const fitsFull = p.fullLabel.length * 5.2 <= groupW - 4;
+            const xLabel = fitsFull ? p.fullLabel : p.dorsalLabel;
+            labelsSvg += `<text x="${centerX}" y="${marginTop + plotH + 15}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="9">${escapeHtml(xLabel)}</text>`;
+          });
+
+          return `<svg viewBox="0 0 ${W} ${H}" class="player-chart-svg" role="img" aria-label="Comparativa de jugadores: lanzamientos y goles">
+            ${gridSvg}
+            ${barsSvg}
+            ${labelsSvg}
+          </svg>`;
         }
         renderStats();
       }

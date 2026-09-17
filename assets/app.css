@@ -174,3 +174,9 @@ button { font-family: inherit; }
   width: 14px; flex-shrink: 0; padding: 0; text-align: center;
 }
 .dd-filter-row-grouplabel { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; cursor: pointer; }
+
+/* ── Leyenda y gráficos SVG (comparativas, etc.) ── */
+.chart-legend { display: flex; gap: 16px; margin-bottom: 10px; }
+.chart-legend-item { display: inline-flex; align-items: center; gap: 6px; color: #c3c2b7; font-size: 12px; }
+.chart-legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.player-chart-svg { width: 100%; height: auto; display: block; }
