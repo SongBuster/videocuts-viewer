@@ -20,8 +20,14 @@
     width: 280px; flex-shrink: 0; border-right: 1px solid #2a2a2a;
     padding: 18px 16px; display: flex; flex-direction: column; gap: 14px;
     box-sizing: border-box;
+    position: sticky; top: 0; max-height: 100vh; overflow-y: auto;
   }
+  .dash-filters-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .dash-filters-title { color: #aaa; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  .filters-reset {
+    background: none; border: none; color: #6a9be0; font-size: 11px; cursor: pointer; padding: 2px 0;
+  }
+  .filters-reset:hover { color: #9ab8f0; text-decoration: underline; }
   .filters-col { display: flex; flex-direction: column; gap: 10px; }
   .filters-col .dd-filter { display: block; }
   .filters-col .dd-filter-btn { width: 100%; box-sizing: border-box; justify-content: space-between; }
@@ -39,7 +45,10 @@
       display: block; width: 100%; text-align: left; background: #1a1a1a; border: none;
       border-bottom: 1px solid #2a2a2a; color: #ccc; padding: 12px 20px; font-size: 13px; cursor: pointer;
     }
-    .dash-filters { width: 100%; border-right: none; border-bottom: 1px solid #2a2a2a; box-sizing: border-box; }
+    .dash-filters {
+      width: 100%; border-right: none; border-bottom: 1px solid #2a2a2a; box-sizing: border-box;
+      position: static; max-height: none;
+    }
     .dash-filters:not(.open) { display: none; }
   }
 </style>
@@ -143,7 +152,10 @@
           <button type="button" class="filters-toggle" id="filtersToggle">☰ Filtros</button>
           <div class="dash-layout">
             <aside class="dash-filters" id="dashFilters">
-              <div class="dash-filters-title">Filtros</div>
+              <div class="dash-filters-title-row">
+                <div class="dash-filters-title">Filtros</div>
+                <button type="button" class="filters-reset" id="filtersReset">Limpiar todo</button>
+              </div>
               <div class="filters-col" id="filtersCol"></div>
             </aside>
             <main class="dash-main">
@@ -186,6 +198,10 @@
           <div class="video-modal-overlay" id="videoModalOverlay" hidden>
             <div class="video-modal">
               <div class="video-modal-bar">
+                <div class="video-modal-nav">
+                  <button type="button" class="video-modal-navbtn" id="videoModalPrev">◀ Anterior</button>
+                  <button type="button" class="video-modal-navbtn" id="videoModalNext">Siguiente ▶</button>
+                </div>
                 <a id="videoModalOpenExt" href="#" target="_blank" rel="noopener" class="video-modal-openext">Abrir en YouTube ↗</a>
                 <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
               </div>
@@ -206,6 +222,10 @@
         // tiempo (un valor calculado, no una columna directa) encaja igual
         // que los que sí son una columna tal cual.
         const activeFilters = {} // key -> { getValue, selected }
+        // Componentes de filtro con desplegable propio (los que se activan
+        // solo desde un gráfico, como zona de lanzamiento, no tienen entrada
+        // aquí) — para poder sincronizarlos al pulsar "Limpiar todo".
+        const filterComponents = {} // key -> { setSelected }
 
         function addFilter(key, fieldLabel, column) {
           const values = [...new Set(records.map((r) => r[column]).filter(Boolean))].sort();
@@ -215,6 +235,7 @@
             onChange: (selected) => { activeFilters[key].selected = selected; renderStats(); }
           });
           activeFilters[key] = { getValue: (r) => r[column], selected: [] };
+          filterComponents[key] = filter;
           filtersCol.appendChild(filter.el);
         }
 
@@ -226,6 +247,7 @@
           onChange: (selected) => { activeFilters.tiempo.selected = selected; renderStats(); }
         });
         activeFilters.tiempo = { getValue: (r) => computeTimeBucketKey(r), selected: [] };
+        filterComponents.tiempo = timeFilter;
         filtersCol.appendChild(timeFilter.el);
 
         // Jugador: si hay "Puesto" relleno, agrupado en árbol (puesto >
@@ -278,6 +300,7 @@
           });
         }
         activeFilters.jugador = { getValue: (r) => r[COL_PLAYER], selected: [] };
+        filterComponents.jugador = playerFilter;
         filtersCol.appendChild(playerFilter.el);
 
         // Fase de juego: sin buscador, y ordenado por nº de eventos (el más
@@ -299,6 +322,7 @@
             onChange: (selected) => { activeFilters.fase.selected = selected; renderStats(); }
           });
           activeFilters.fase = { getValue: (r) => r[COL_PHASE], selected: [] };
+          filterComponents.fase = phaseFilter;
           filtersCol.appendChild(phaseFilter.el);
         }
 
@@ -324,6 +348,7 @@
             onChange: (selected) => { activeFilters.tipoEvento.selected = selected; renderStats(); }
           });
           activeFilters.tipoEvento = { getValue: (r) => r[COL_EVENT_TYPE], selected: [] };
+          filterComponents.tipoEvento = eventTypeFilter;
           filtersCol.appendChild(eventTypeFilter.el);
         }
 
@@ -346,6 +371,7 @@
             onChange: (selected) => { activeFilters[key].selected = selected; renderStats(); }
           });
           activeFilters[key] = { getValue: (r) => r[column], selected: [] };
+          filterComponents[key] = filter;
           filtersCol.appendChild(filter.el);
         }
 
@@ -360,6 +386,14 @@
         if (hasPuesto) {
           activeFilters.puesto = { getValue: (r) => POSITION_LABEL_TO_CODE[r[COL_PUESTO]] || null, selected: [] };
         }
+
+        document.getElementById('filtersReset').addEventListener('click', () => {
+          for (const key of Object.keys(activeFilters)) {
+            activeFilters[key].selected = [];
+            if (filterComponents[key]) filterComponents[key].setSelected([]);
+          }
+          renderStats();
+        });
 
         function figure(n, label) {
           return `<div class="figure"><span class="n">${n}</span><span class="l">${label}</span></div>`;
@@ -801,15 +835,35 @@
         const videoModalOverlay = document.getElementById('videoModalOverlay');
         const videoModalIframe = document.getElementById('videoModalIframe');
         const videoModalOpenExt = document.getElementById('videoModalOpenExt');
+        const videoModalPrev = document.getElementById('videoModalPrev');
+        const videoModalNext = document.getElementById('videoModalNext');
         document.getElementById('videoModalClose').addEventListener('click', closeVideoModal);
         videoModalOverlay.addEventListener('click', (e) => { if (e.target === videoModalOverlay) closeVideoModal(); });
+        videoModalPrev.addEventListener('click', () => goToVideo(-1));
+        videoModalNext.addEventListener('click', () => goToVideo(1));
+
+        // Navegación dentro del modal: la lista de "vídeos disponibles" es la
+        // de la tabla de detalle, en el orden en que se está viendo ahora
+        // mismo (respeta filtros y la columna por la que esté ordenada).
+        let currentVideoRows = [];
+        let currentVideoIndex = -1;
+
+        function goToVideo(delta) {
+          const next = currentVideoIndex + delta;
+          if (next < 0 || next >= currentVideoRows.length) return;
+          openVideoModal(currentVideoRows[next], next);
+        }
 
         function closeVideoModal() {
           videoModalOverlay.hidden = true;
           videoModalIframe.src = ''; // corta la reproducción al cerrar
         }
 
-        function openVideoModal(record) {
+        function openVideoModal(record, index) {
+          currentVideoIndex = index ?? currentVideoRows.indexOf(record);
+          videoModalPrev.disabled = currentVideoIndex <= 0;
+          videoModalNext.disabled = currentVideoIndex < 0 || currentVideoIndex >= currentVideoRows.length - 1;
+
           const youtubeId = record[COL_YOUTUBE];
           const startSec = Math.max(0, Math.floor(Number(record[COL_CLIP_START]) || 0));
           const endSec = Math.floor(Number(record[COL_CLIP_END]));
@@ -839,12 +893,45 @@
           videoModalOverlay.hidden = false;
         }
 
+        // El puesto va entre paréntesis junto al jugador ("11 PABLO X (EI)"),
+        // no como columna aparte; y la zona de lanzamiento se lee de la
+        // misma columna "Posición" que usa el mapa de calor.
+        function formatPlayerCell(r) {
+          if (!r[COL_PLAYER]) return '';
+          const { label } = parsePlayer(r[COL_PLAYER]);
+          const code = POSITION_LABEL_TO_CODE[r[COL_PUESTO]];
+          return code ? `${label} (${code})` : label;
+        }
+        function formatZoneLabel(pos) {
+          const m = (pos || '').match(/^\s*\S+\s*·\s*(.+)$/);
+          return m ? m[1] : '';
+        }
+
+        // Columnas de la tabla: "get" es el valor por el que se ordena al
+        // pulsar la cabecera (numérico para Jugador, así ordena por dorsal
+        // y no como texto); "display" es lo que se ve si difiere de "get".
+        let detailSort = { key: null, dir: 'asc' };
+
+        const DETAIL_COLUMNS = [
+          { key: 'partido', label: 'Partido', get: (r) => r[COL_CODE] || '' },
+          { key: 'parte', label: 'Parte', get: (r) => r['Parte'] || '' },
+          { key: 'tiempo', label: 'Tiempo', get: (r) => r['Tiempo de partido'] || '' },
+          { key: 'jugador', label: 'Jugador', get: (r) => r[COL_PLAYER] ? parsePlayer(r[COL_PLAYER]).dorsal : Infinity, display: formatPlayerCell },
+          { key: 'zona', label: 'Zona', get: (r) => formatZoneLabel(r[COL_POSITION]) },
+          { key: 'tipo', label: 'Tipo', get: (r) => r['Tipo de lanzamiento'] || '' },
+          { key: 'mano', label: 'Mano', get: (r) => r['Mano'] || '' },
+          { key: 'resultado', label: 'Resultado', get: (r) => r['Resultado'] || '', cls: (r) => (/gol/i.test(r['Resultado'] || '') ? 'is-gol' : /parada/i.test(r['Resultado'] || '') ? 'is-parada' : '') }
+        ];
+
         function renderDetailTable(filtered) {
           const panel = document.getElementById('detailTablePanel');
           if (filtered.length === 0) { panel.hidden = true; return; }
           panel.hidden = false;
 
-          const rows = [...filtered].sort((a, b) => {
+          // Orden por defecto: cronológico (partido > parte > tiempo). Si se
+          // ha pulsado una cabecera, se reordena por esa columna pero de
+          // forma estable, así los empates mantienen el orden cronológico.
+          let rows = [...filtered].sort((a, b) => {
             const codeA = a[COL_CODE] || '', codeB = b[COL_CODE] || '';
             if (codeA !== codeB) return codeA < codeB ? -1 : 1;
             const partA = a['Parte'] || '', partB = b['Parte'] || '';
@@ -852,37 +939,61 @@
             return (a['Tiempo de partido'] || '').localeCompare(b['Tiempo de partido'] || '');
           });
 
-          const head = `
-            <thead><tr>
-              <th>Partido</th><th>Parte</th><th>Tiempo</th><th>Jugador</th>
-              ${hasPuesto ? '<th>Puesto</th>' : ''}
-              <th>Tipo</th><th>Mano</th><th>Resultado</th><th>Vídeo</th>
-            </tr></thead>`;
+          if (detailSort.key) {
+            const col = DETAIL_COLUMNS.find((c) => c.key === detailSort.key);
+            const dir = detailSort.dir === 'desc' ? -1 : 1;
+            rows = rows
+              .map((r, i) => ({ r, i }))
+              .sort((a, b) => {
+                const va = col.get(a.r), vb = col.get(b.r);
+                const cmp = typeof va === 'number' && typeof vb === 'number'
+                  ? va - vb
+                  : String(va).localeCompare(String(vb), 'es');
+                return cmp !== 0 ? cmp * dir : a.i - b.i;
+              })
+              .map(({ r }) => r);
+          }
 
-          const body = rows.map((r, i) => {
-            const playerLabel = r[COL_PLAYER] ? parsePlayer(r[COL_PLAYER]).label : '';
-            const resultado = r['Resultado'] || '';
-            const resultClass = /gol/i.test(resultado) ? 'is-gol' : /parada/i.test(resultado) ? 'is-parada' : '';
+          const headCells = DETAIL_COLUMNS.map((col) => {
+            const active = detailSort.key === col.key;
+            const arrow = active ? (detailSort.dir === 'desc' ? ' ▼' : ' ▲') : '';
+            return `<th class="sortable" data-key="${col.key}">${escapeHtml(col.label)}${arrow}</th>`;
+          }).join('');
+          const head = `<thead><tr>${headCells}<th>Vídeo</th></tr></thead>`;
+
+          // Índice dentro de "solo las filas con vídeo" (no de "rows" entero),
+          // que es la lista que usan luego los botones Anterior/Siguiente.
+          const videoRows = rows.filter((r) => r[COL_YOUTUBE]);
+          currentVideoRows = videoRows;
+          let videoCounter = 0;
+
+          const body = rows.map((r) => {
+            const cells = DETAIL_COLUMNS.map((col) => {
+              const value = col.display ? col.display(r) : col.get(r);
+              const cls = col.cls ? col.cls(r) : '';
+              return `<td class="${cls}">${escapeHtml(value)}</td>`;
+            }).join('');
             const videoCell = r[COL_YOUTUBE]
-              ? `<button type="button" class="video-link" data-row-idx="${i}">▶ Ver</button>`
+              ? `<button type="button" class="video-link" data-row-idx="${videoCounter++}">▶ Ver</button>`
               : '<span class="detail-table-empty">—</span>';
-            return `<tr>
-              <td>${escapeHtml(r[COL_CODE] || '')}</td>
-              <td>${escapeHtml(r['Parte'] || '')}</td>
-              <td>${escapeHtml(r['Tiempo de partido'] || '')}</td>
-              <td>${escapeHtml(playerLabel)}</td>
-              ${hasPuesto ? `<td>${escapeHtml(r[COL_PUESTO] || '')}</td>` : ''}
-              <td>${escapeHtml(r['Tipo de lanzamiento'] || '')}</td>
-              <td>${escapeHtml(r['Mano'] || '')}</td>
-              <td class="${resultClass}">${escapeHtml(resultado)}</td>
-              <td>${videoCell}</td>
-            </tr>`;
+            return `<tr>${cells}<td>${videoCell}</td></tr>`;
           }).join('');
 
           document.getElementById('detailTable').innerHTML = head + `<tbody>${body}</tbody>`;
 
           document.querySelectorAll('#detailTable .video-link').forEach((btn) => {
-            btn.addEventListener('click', () => openVideoModal(rows[Number(btn.dataset.rowIdx)]));
+            const idx = Number(btn.dataset.rowIdx);
+            btn.addEventListener('click', () => openVideoModal(videoRows[idx], idx));
+          });
+
+          document.querySelectorAll('#detailTable th.sortable').forEach((th) => {
+            th.addEventListener('click', () => {
+              const key = th.dataset.key;
+              detailSort = detailSort.key === key
+                ? { key, dir: detailSort.dir === 'asc' ? 'desc' : 'asc' }
+                : { key, dir: 'asc' };
+              renderDetailTable(filtered);
+            });
           });
         }
 
