@@ -899,6 +899,7 @@
           videoModalReplay.title = 'No disponible: no se pudo cargar la API de YouTube (¿bloqueador de anuncios?)';
           if (pendingVideo) {
             renderFallbackIframe(pendingVideo);
+            scheduleFallbackAdvance(pendingVideo.startSec, pendingVideo.endSec);
             pendingVideo = null;
           }
         }, 3000);
@@ -910,6 +911,17 @@
             `<iframe src="https://www.youtube.com/embed/${youtubeId}?${params.toString()}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
         }
 
+        // Avanza solo al siguiente vídeo cuando toca — nunca dos veces para
+        // el mismo corte, y nunca si el modal ya se cerró o si el usuario ha
+        // desmarcado la casilla.
+        let advanceFired = false;
+
+        function tryAutoAdvance() {
+          if (advanceFired || videoModalOverlay.hidden || !videoModalAutoAdvance.checked) return;
+          advanceFired = true;
+          goToVideo(1);
+        }
+
         function loadIntoPlayer({ youtubeId, startSec, endSec }) {
           const vars = { start: startSec, autoplay: 1, rel: 0 };
           if (Number.isFinite(endSec) && endSec > startSec) vars.end = endSec;
@@ -919,13 +931,12 @@
                 videoId: youtubeId,
                 playerVars: vars,
                 events: {
-                  // El parámetro "end" hace que YouTube PAUSE el vídeo en ese
-                  // punto, no que llegue a "terminado" — con "end" definido
-                  // este evento nunca dispara ENDED, así que el auto-avance
-                  // de verdad va por temporizador (ver scheduleAutoAdvance).
-                  // Sin "end" (fallback si el corte no trae fin) sí sirve.
-                  onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) tryAutoAdvance(); },
-                  onError: () => { fallbackMode = true; renderFallbackIframe({ youtubeId, startSec, endSec }); }
+                  onStateChange: handlePlayerStateChange,
+                  onError: () => {
+                    fallbackMode = true;
+                    renderFallbackIframe({ youtubeId, startSec, endSec });
+                    scheduleFallbackAdvance(startSec, endSec);
+                  }
                 }
               });
             } else {
@@ -934,38 +945,47 @@
           } catch {
             fallbackMode = true;
             renderFallbackIframe({ youtubeId, startSec, endSec });
+            scheduleFallbackAdvance(startSec, endSec);
           }
         }
 
-        // Avanza solo al siguiente vídeo cuando toca — nunca dos veces para
-        // el mismo corte (por si el temporizador y un evento ENDED
-        // coincidieran), y nunca si el modal ya se cerró.
-        let advanceTimer = null;
-        let advanceFired = false;
-
-        function tryAutoAdvance() {
-          if (advanceFired || videoModalOverlay.hidden || !videoModalAutoAdvance.checked) return;
-          advanceFired = true;
-          goToVideo(1);
+        // El parámetro "end" hace que YouTube PAUSE el vídeo al llegar ahí,
+        // no que llegue a "terminado" (ENDED) — y ese mismo estado PAUSADO
+        // es el que dispara si el usuario pausa el vídeo él mismo a mitad,
+        // para poder revisar la jugada con calma. Para no confundir un pause
+        // manual con "se acabó el corte", se mira el tiempo real reproducido
+        // (getCurrentTime): solo si ya está en el fin del corte se considera
+        // acabado de verdad; si el usuario lo retoma, sigue donde estaba.
+        function handlePlayerStateChange(e) {
+          if (e.data === YT.PlayerState.ENDED) { tryAutoAdvance(); return; }
+          if (e.data === YT.PlayerState.PAUSED && currentVideoParams && Number.isFinite(currentVideoParams.endSec)) {
+            const reachedEnd = ytPlayer.getCurrentTime() >= currentVideoParams.endSec - 0.5;
+            if (reachedEnd) tryAutoAdvance();
+          }
         }
 
-        // El estado ENDED del reproductor no es fiable cuando el corte tiene
-        // un "fin" definido (ver arriba) — como sí sabemos cuánto dura el
-        // corte (fin - inicio), se programa el avance directamente por
-        // temporizador; es lo mismo tanto si hay API de YouTube como en el
-        // <iframe> de reserva sin ella.
-        function scheduleAutoAdvance(startSec, endSec) {
+        // Sin la API de YouTube (modo de reserva, iframe simple) no hay
+        // forma de saber el estado real del vídeo — ahí sí hace falta un
+        // temporizador por duración conocida, con la limitación de que no
+        // distingue una pausa manual de haber llegado al final.
+        let advanceTimer = null;
+
+        function scheduleFallbackAdvance(startSec, endSec) {
           if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
-          advanceFired = false;
-          if (!Number.isFinite(endSec) || endSec <= startSec) return; // sin fin conocido: irá por ENDED
-          const ms = (endSec - startSec) * 1000 + 400; // margen para el arranque/buffering
+          if (!Number.isFinite(endSec) || endSec <= startSec) return;
+          const ms = (endSec - startSec) * 1000 + 400;
           advanceTimer = setTimeout(tryAutoAdvance, ms);
         }
 
         function replayVideo() {
-          if (fallbackMode) { renderFallbackIframe(currentVideoParams); }
-          else if (ytPlayer) { ytPlayer.seekTo(currentClipStart, true); ytPlayer.playVideo(); }
-          if (currentVideoParams) scheduleAutoAdvance(currentVideoParams.startSec, currentVideoParams.endSec);
+          advanceFired = false;
+          if (fallbackMode) {
+            renderFallbackIframe(currentVideoParams);
+            if (currentVideoParams) scheduleFallbackAdvance(currentVideoParams.startSec, currentVideoParams.endSec);
+          } else if (ytPlayer) {
+            ytPlayer.seekTo(currentClipStart, true);
+            ytPlayer.playVideo();
+          }
         }
 
         function goToVideo(delta) {
@@ -991,9 +1011,9 @@
           const endSec = Math.floor(Number(record[COL_CLIP_END]));
           currentClipStart = startSec;
           currentVideoParams = { youtubeId, startSec, endSec };
-          scheduleAutoAdvance(startSec, endSec);
+          advanceFired = false;
 
-          if (fallbackMode) renderFallbackIframe(currentVideoParams);
+          if (fallbackMode) { renderFallbackIframe(currentVideoParams); scheduleFallbackAdvance(startSec, endSec); }
           else if (ytApiReady) loadIntoPlayer(currentVideoParams);
           else pendingVideo = currentVideoParams;
 
