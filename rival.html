@@ -71,6 +71,11 @@
     EI: 'Extremo izquierdo', LI: 'Lateral izquierdo', PI: 'Pivote', PT: 'Portero',
     CT: 'Central', LD: 'Lateral derecho', ED: 'Extremo derecho'
   }
+  // Para el eje X del gráfico de puesto: si no cabe el nombre completo, se
+  // prueba una abreviatura antes de caer al código de dos letras.
+  const POSITION_LABELS_SHORT = {
+    EI: 'Ext Izq', LI: 'Lat Izq', PI: 'Pivote', PT: 'Portero', CT: 'Central', LD: 'Lat Der', ED: 'Ext Der'
+  }
   // El CSV trae el nombre completo ("Extremo izquierdo"), no el código — el
   // desplegable de la plantilla exporta la etiqueta, igual que "Mano". Un
   // valor antiguo (texto libre de antes de que el puesto fuera una lista
@@ -444,11 +449,13 @@
               return {
                 code,
                 fullLabel: POSITION_LABELS[code],
+                shortLabel: POSITION_LABELS_SHORT[code],
                 lanzamientos,
                 goles,
                 efectividad: Math.round((goles / lanzamientos) * 100)
               };
-            });
+            })
+            .sort((a, b) => b.lanzamientos - a.lanzamientos);
 
           if (items.length === 0) { panel.hidden = true; return; }
           panel.hidden = false;
@@ -508,13 +515,19 @@
 
             const topY = Math.min(lanzY, golY);
 
+            // Nombre completo si cabe, si no una abreviatura, si tampoco el código.
+            const CHAR_W = 5.8;
+            const fitsFull = p.fullLabel.length * CHAR_W <= groupW - 4;
+            const fitsShort = p.shortLabel.length * CHAR_W <= groupW - 4;
+            const xLabel = fitsFull ? p.fullLabel : fitsShort ? p.shortLabel : p.code;
+
             groupsSvg += `
               <g class="position-bar-group" data-code="${p.code}" opacity="${isDimmed ? 0.35 : 1}">
                 <rect x="${groupX}" y="0" width="${groupW}" height="${H}" fill="transparent" />
                 <rect x="${lanzX}" y="${lanzY}" width="${barW}" height="${Math.max(0, lanzH)}" rx="4" fill="${COLOR_LANZ}"${highlight}><title>${escapeHtml(p.fullLabel)} — Lanzamientos: ${p.lanzamientos}</title></rect>
                 <rect x="${golX}" y="${golY}" width="${barW}" height="${Math.max(0, golH)}" rx="4" fill="${COLOR_GOL}"${highlight}><title>${escapeHtml(p.fullLabel)} — Goles: ${p.goles}</title></rect>
                 <text x="${centerX}" y="${Math.max(marginTop - 8, topY - 6)}" text-anchor="middle" fill="${TEXT_SECONDARY}" font-size="10" style="pointer-events:none">${p.goles}/${p.lanzamientos} (${p.efectividad}%)</text>
-                <text x="${centerX}" y="${marginTop + plotH + 15}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="10" style="pointer-events:none">${p.code}</text>
+                <text x="${centerX}" y="${marginTop + plotH + 15}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="10" style="pointer-events:none">${escapeHtml(xLabel)}</text>
               </g>`;
           });
 
