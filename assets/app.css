@@ -188,4 +188,4 @@ button { font-family: inherit; }
 .zones-row > .panel { flex: 1 1 320px; min-width: 280px; }
 
 /* ── Gráficos interactivos: pulsar un elemento filtra el resto de la página ── */
-.player-bar-group, .zone-bubble-clickable, .goal-cell-clickable { cursor: pointer; }
+.player-bar-group, .zone-bubble-clickable, .goal-cell-clickable, .position-bar-group { cursor: pointer; }

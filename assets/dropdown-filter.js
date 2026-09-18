@@ -276,7 +276,14 @@ export function createTreeDropdownFilter({ fieldLabel, groups, onChange }) {
 
   return {
     el: root,
-    getSelected: () => selected
+    getSelected: () => selected,
+    // Igual que en createDropdownFilter: fijar la selección desde fuera (p.ej.
+    // al pulsar un elemento en un gráfico) manteniendo el árbol sincronizado.
+    setSelected: (newSelected) => {
+      selected = newSelected
+      renderList()
+      updateButtonState()
+    }
   }
 }
 
