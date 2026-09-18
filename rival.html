@@ -20,7 +20,11 @@
     width: 280px; flex-shrink: 0; border-right: 1px solid #2a2a2a;
     padding: 18px 16px; display: flex; flex-direction: column; gap: 14px;
     box-sizing: border-box;
-    position: sticky; top: 0; max-height: 100vh; overflow-y: auto;
+    /* Solo sticky, sin overflow/max-height: un overflow aquí recortaría los
+       desplegables de filtro, que se abren hacia abajo por fuera de esta
+       columna (position:absolute) — el recorte no distingue que son "parte"
+       del contenido flotante y los corta igual que si fueran texto normal. */
+    position: sticky; top: 0;
   }
   .dash-filters-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .dash-filters-title { color: #aaa; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
@@ -47,7 +51,7 @@
     }
     .dash-filters {
       width: 100%; border-right: none; border-bottom: 1px solid #2a2a2a; box-sizing: border-box;
-      position: static; max-height: none;
+      position: static;
     }
     .dash-filters:not(.open) { display: none; }
   }
@@ -862,35 +866,69 @@
         // el usuario pulsa "Ver" antes de que la API termine de cargar (script
         // externo, tarda un poco), se guarda en pendingVideo y se abre en
         // cuanto esté lista.
+        //
+        // La API puede no llegar nunca a cargar (bloqueadores de anuncios o
+        // de privacidad — Brave Shields, uBlock, etc. — bloquean con
+        // frecuencia justo este script de YouTube). Si no responde en unos
+        // segundos, en vez de dejar el vídeo en negro para siempre, se cae a
+        // un <iframe> normal: se pierde "volver a ver" y el auto-avance,
+        // pero al menos se ve el vídeo.
         let ytPlayer = null;
         let ytApiReady = false;
+        let fallbackMode = false;
         let pendingVideo = null;
+        let currentVideoParams = null;
 
         window.onYouTubeIframeAPIReady = function () {
           ytApiReady = true;
+          if (fallbackMode) return; // ya se optó por el iframe simple, no cambiar a mitad de sesión
           if (pendingVideo) {
             loadIntoPlayer(pendingVideo);
             pendingVideo = null;
           }
         };
 
+        setTimeout(() => {
+          if (ytApiReady) return;
+          fallbackMode = true;
+          videoModalReplay.title = 'No disponible: no se pudo cargar la API de YouTube (¿bloqueador de anuncios?)';
+          if (pendingVideo) {
+            renderFallbackIframe(pendingVideo);
+            pendingVideo = null;
+          }
+        }, 3000);
+
+        function renderFallbackIframe({ youtubeId, startSec, endSec }) {
+          const params = new URLSearchParams({ start: String(startSec), autoplay: '1', rel: '0', r: String(Date.now()) });
+          if (Number.isFinite(endSec) && endSec > startSec) params.set('end', String(endSec));
+          document.getElementById('videoModalPlayer').innerHTML =
+            `<iframe src="https://www.youtube.com/embed/${youtubeId}?${params.toString()}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+        }
+
         function loadIntoPlayer({ youtubeId, startSec, endSec }) {
           const vars = { start: startSec, autoplay: 1, rel: 0 };
           if (Number.isFinite(endSec) && endSec > startSec) vars.end = endSec;
-          if (!ytPlayer) {
-            ytPlayer = new YT.Player('videoModalPlayer', {
-              videoId: youtubeId,
-              playerVars: vars,
-              events: {
-                onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) goToVideo(1); }
-              }
-            });
-          } else {
-            ytPlayer.loadVideoById({ videoId: youtubeId, startSeconds: startSec, endSeconds: vars.end });
+          try {
+            if (!ytPlayer) {
+              ytPlayer = new YT.Player('videoModalPlayer', {
+                videoId: youtubeId,
+                playerVars: vars,
+                events: {
+                  onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) goToVideo(1); },
+                  onError: () => { fallbackMode = true; renderFallbackIframe({ youtubeId, startSec, endSec }); }
+                }
+              });
+            } else {
+              ytPlayer.loadVideoById({ videoId: youtubeId, startSeconds: startSec, endSeconds: vars.end });
+            }
+          } catch {
+            fallbackMode = true;
+            renderFallbackIframe({ youtubeId, startSec, endSec });
           }
         }
 
         function replayVideo() {
+          if (fallbackMode) { renderFallbackIframe(currentVideoParams); return; }
           if (!ytPlayer) return;
           ytPlayer.seekTo(currentClipStart, true);
           ytPlayer.playVideo();
@@ -905,6 +943,7 @@
         function closeVideoModal() {
           videoModalOverlay.hidden = true;
           if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo(); // corta la reproducción al cerrar
+          else if (fallbackMode) document.getElementById('videoModalPlayer').innerHTML = ''; // sin API no hay pauseVideo: se quita el iframe
         }
 
         function openVideoModal(record, index) {
@@ -916,9 +955,11 @@
           const startSec = Math.max(0, Math.floor(Number(record[COL_CLIP_START]) || 0));
           const endSec = Math.floor(Number(record[COL_CLIP_END]));
           currentClipStart = startSec;
+          currentVideoParams = { youtubeId, startSec, endSec };
 
-          if (ytApiReady) loadIntoPlayer({ youtubeId, startSec, endSec });
-          else pendingVideo = { youtubeId, startSec, endSec };
+          if (fallbackMode) renderFallbackIframe(currentVideoParams);
+          else if (ytApiReady) loadIntoPlayer(currentVideoParams);
+          else pendingVideo = currentVideoParams;
 
           videoModalOpenExt.href = `https://www.youtube.com/watch?v=${youtubeId}&t=${startSec}s`;
 
