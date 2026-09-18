@@ -204,6 +204,9 @@ button { font-family: inherit; }
 .detail-table tbody tr:hover { background: #1e1e1e; }
 .detail-table td.is-gol { color: #0ca30c; font-weight: 600; }
 .detail-table td.is-parada { color: #898781; }
+/* Portero: semántica invertida respecto a jugadores — una parada es el éxito. */
+.detail-table td.is-good { color: #0ca30c; font-weight: 600; }
+.detail-table td.is-bad { color: #d03b3b; font-weight: 600; }
 .detail-table-empty { color: #555; }
 .video-link {
   background: #16223a; border: 1px solid #2a3a52; color: #9ab8f0; border-radius: 5px;
@@ -266,3 +269,5 @@ button { font-family: inherit; }
 .video-modal-info-line.video-modal-info-context { color: #898781; font-size: 12px; }
 .video-modal-info-line .is-gol { color: #0ca30c; font-weight: 600; }
 .video-modal-info-line .is-parada { color: #898781; }
+.video-modal-info-line .is-good { color: #0ca30c; font-weight: 600; }
+.video-modal-info-line .is-bad { color: #d03b3b; font-weight: 600; }

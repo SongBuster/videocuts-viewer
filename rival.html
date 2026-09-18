@@ -70,6 +70,32 @@
   <div class="tab-panel" id="tab-jugadores"></div>
   <div class="tab-panel" id="tab-portero" hidden></div>
 
+  <!-- Modal de vídeo: compartido por las dos pestañas (jugadores y
+       portero) — si viviera dentro de la plantilla de una sola, la otra no
+       podría usarlo. -->
+  <div class="video-modal-overlay" id="videoModalOverlay" hidden>
+    <div class="video-modal">
+      <div class="video-modal-bar">
+        <div class="video-modal-nav">
+          <button type="button" class="video-modal-navbtn" id="videoModalPrev">◀ Anterior</button>
+          <button type="button" class="video-modal-navbtn" id="videoModalReplay">↻ Volver a ver</button>
+          <button type="button" class="video-modal-navbtn" id="videoModalNext">Siguiente ▶</button>
+        </div>
+        <a id="videoModalOpenExt" href="#" target="_blank" rel="noopener" class="video-modal-openext">Abrir en YouTube ↗</a>
+        <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
+      </div>
+      <label class="video-modal-autoadvance">
+        <input type="checkbox" id="videoModalAutoAdvance" checked />
+        Pasar automáticamente al siguiente vídeo al terminar
+      </label>
+      <div class="video-modal-frame">
+        <div id="videoModalPlayer"></div>
+      </div>
+      <div class="video-modal-info" id="videoModalInfo"></div>
+      <div class="video-modal-resize" id="videoModalResize" title="Arrastra para cambiar el tamaño"></div>
+    </div>
+  </div>
+
   <!-- API de YouTube: permite controlar el reproductor del modal de vídeo
        (volver a ver, avanzar al siguiente corte al terminar el actual) sin
        depender solo de los parámetros de la URL del iframe. -->
@@ -88,6 +114,8 @@
   const COL_YOUTUBE = 'ID de YouTube del vídeo'
   const COL_CLIP_START = 'Inicio del corte (segundos)'
   const COL_CLIP_END = 'Fin del corte (segundos)'
+  const COL_GK_POSITION = 'Posición portero'
+  const COL_GK_STANCE = 'Postura portero'
 
   // Mismos códigos y orden que en VideoCuts (shared/types.ts): de un extremo
   // al otro de la pista, con portero y pivote en medio. No incluye DF
@@ -116,6 +144,285 @@
     const m = raw.match(/^#(\d+)\s*(.*)$/)
     if (!m) return { dorsal: Infinity, label: raw }
     return { dorsal: Number(m[1]), label: `${m[1]} ${m[2]}`.trim() }
+  }
+
+  // ── Utilidades compartidas por las dos pestañas (jugadores y portero):
+  // extraer el código de una zona ("2 · Extremo..." → "2"/"Extremo..."), y
+  // el degradado rojo→amarillo→verde por % de efectividad (o de paradas,
+  // en portero — el cálculo de qué % se le pasa cambia, pero el color y el
+  // contraste del texto son los mismos). ──
+  function parseZoneCode(pos) {
+    const m = (pos || '').match(/^\s*(\S+)\s*·/)
+    return m ? m[1] : null
+  }
+  function formatZoneLabel(pos) {
+    const m = (pos || '').match(/^\s*\S+\s*·\s*(.+)$/)
+    return m ? m[1] : ''
+  }
+  function zoneCentroid(points) {
+    const cx = points.reduce((s, p) => s + p.x, 0) / points.length
+    const cy = points.reduce((s, p) => s + p.y, 0) / points.length
+    return { cx, cy }
+  }
+  function lerpChannel(a, b, t) { return Math.round(a + (b - a) * t) }
+  function mixColorRGB(c1, c2, t) {
+    return [lerpChannel(c1[0], c2[0], t), lerpChannel(c1[1], c2[1], t), lerpChannel(c1[2], c2[2], t)]
+  }
+  function rgbStr(c) { return `rgb(${c[0]},${c[1]},${c[2]})` }
+  function efficiencyColorRGB(pct) {
+    const RED = [208, 59, 59], YELLOW = [250, 178, 25], GREEN = [12, 163, 12]
+    const t = Math.max(0, Math.min(100, pct))
+    return t <= 50 ? mixColorRGB(RED, YELLOW, t / 50) : mixColorRGB(YELLOW, GREEN, (t - 50) / 50)
+  }
+  function efficiencyColor(pct) { return rgbStr(efficiencyColorRGB(pct)) }
+  function textColorOn(rgb) {
+    const luminance = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+    return luminance > 150 ? '#1a1a1a' : '#fff'
+  }
+  function niceMax(value) {
+    return value <= 0 ? 5 : Math.ceil(value / 5) * 5
+  }
+  // El CSV trae la etiqueta completa de la zona de portería ("Medio
+  // derecha"), no el código interno que usa GOAL_LAYOUT — mismo mapeo que
+  // usan tanto jugadores como portero.
+  const GOAL_LABEL_TO_CODE = Object.fromEntries(Object.entries(GOAL_LABELS).map(([code, label]) => [label, code]))
+
+  // ── Modal de vídeo: compartido por las pestañas de jugadores y portero.
+  // Cada pestaña rellena currentVideoRows con su propia tabla de detalle
+  // (filtrada/ordenada a su manera) y llama a openVideoModal(record, index).
+  const videoModalOverlay = document.getElementById('videoModalOverlay');
+  const videoModalOpenExt = document.getElementById('videoModalOpenExt');
+  const videoModalPrev = document.getElementById('videoModalPrev');
+  const videoModalNext = document.getElementById('videoModalNext');
+  const videoModalReplay = document.getElementById('videoModalReplay');
+  const videoModalAutoAdvance = document.getElementById('videoModalAutoAdvance');
+  const videoModal = document.querySelector('.video-modal');
+  const videoModalResize = document.getElementById('videoModalResize');
+  document.getElementById('videoModalClose').addEventListener('click', closeVideoModal);
+  videoModalOverlay.addEventListener('click', (e) => { if (e.target === videoModalOverlay) closeVideoModal(); });
+  videoModalPrev.addEventListener('click', () => goToVideo(-1));
+  videoModalNext.addEventListener('click', () => goToVideo(1));
+  videoModalReplay.addEventListener('click', replayVideo);
+
+  // Tamaño del modal de vídeo: se puede arrastrar desde el borde
+  // derecho (el alto lo pone solo el aspect-ratio del vídeo) y se
+  // recuerda entre visitas.
+  try {
+    const savedWidth = localStorage.getItem('vv_videoModalWidth');
+    if (savedWidth) { videoModal.style.maxWidth = 'none'; videoModal.style.width = `${savedWidth}px`; }
+  } catch {}
+
+  videoModalResize.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    videoModalResize.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startWidth = videoModal.getBoundingClientRect().width;
+    videoModal.style.maxWidth = 'none';
+
+    function onMove(ev) {
+      const maxW = Math.min(window.innerWidth * 0.96, 1400);
+      const newWidth = Math.min(maxW, Math.max(320, startWidth + (ev.clientX - startX)));
+      videoModal.style.width = `${newWidth}px`;
+    }
+    function onUp() {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      try { localStorage.setItem('vv_videoModalWidth', String(Math.round(videoModal.getBoundingClientRect().width))); } catch {}
+    }
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  });
+
+  // Navegación dentro del modal: la lista de "vídeos disponibles" es la
+  // de la tabla de detalle de la pestaña activa, en el orden en que se
+  // está viendo ahora mismo (respeta filtros y la columna por la que
+  // esté ordenada). Cada pestaña reasigna currentVideoRows al renderizar
+  // su tabla.
+  let currentVideoRows = [];
+  let currentVideoIndex = -1;
+  let currentClipStart = 0;
+
+  // Reproductor vía la API JS de YouTube (no un <iframe src=...> suelto):
+  // hace falta para saber cuándo termina un corte (avanzar solo al
+  // siguiente) y para poder "volver a ver" sin recargar el iframe. Si
+  // el usuario pulsa "Ver" antes de que la API termine de cargar (script
+  // externo, tarda un poco), se guarda en pendingVideo y se abre en
+  // cuanto esté lista.
+  //
+  // La API puede no llegar nunca a cargar (bloqueadores de anuncios o
+  // de privacidad — Brave Shields, uBlock, etc. — bloquean con
+  // frecuencia justo este script de YouTube). Si no responde en unos
+  // segundos, en vez de dejar el vídeo en negro para siempre, se cae a
+  // un <iframe> normal: se pierde "volver a ver" y el auto-avance,
+  // pero al menos se ve el vídeo.
+  let ytPlayer = null;
+  let ytApiReady = false;
+  let fallbackMode = false;
+  let pendingVideo = null;
+  let currentVideoParams = null;
+
+  window.onYouTubeIframeAPIReady = function () {
+    ytApiReady = true;
+    if (fallbackMode) return; // ya se optó por el iframe simple, no cambiar a mitad de sesión
+    if (pendingVideo) {
+      loadIntoPlayer(pendingVideo);
+      pendingVideo = null;
+    }
+  };
+
+  setTimeout(() => {
+    if (ytApiReady) return;
+    fallbackMode = true;
+    videoModalReplay.title = 'No disponible: no se pudo cargar la API de YouTube (¿bloqueador de anuncios?)';
+    if (pendingVideo) {
+      renderFallbackIframe(pendingVideo);
+      scheduleFallbackAdvance(pendingVideo.startSec, pendingVideo.endSec);
+      pendingVideo = null;
+    }
+  }, 3000);
+
+  function renderFallbackIframe({ youtubeId, startSec, endSec }) {
+    const params = new URLSearchParams({ start: String(startSec), autoplay: '1', rel: '0', r: String(Date.now()) });
+    if (Number.isFinite(endSec) && endSec > startSec) params.set('end', String(endSec));
+    document.getElementById('videoModalPlayer').innerHTML =
+      `<iframe src="https://www.youtube.com/embed/${youtubeId}?${params.toString()}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+  }
+
+  // Avanza solo al siguiente vídeo cuando toca — nunca dos veces para
+  // el mismo corte, y nunca si el modal ya se cerró o si el usuario ha
+  // desmarcado la casilla.
+  let advanceFired = false;
+
+  function tryAutoAdvance() {
+    if (advanceFired || videoModalOverlay.hidden || !videoModalAutoAdvance.checked) return;
+    advanceFired = true;
+    goToVideo(1);
+  }
+
+  function loadIntoPlayer({ youtubeId, startSec, endSec }) {
+    const vars = { start: startSec, autoplay: 1, rel: 0 };
+    if (Number.isFinite(endSec) && endSec > startSec) vars.end = endSec;
+    try {
+      if (!ytPlayer) {
+        ytPlayer = new YT.Player('videoModalPlayer', {
+          videoId: youtubeId,
+          playerVars: vars,
+          events: {
+            onStateChange: handlePlayerStateChange,
+            onError: () => {
+              fallbackMode = true;
+              renderFallbackIframe({ youtubeId, startSec, endSec });
+              scheduleFallbackAdvance(startSec, endSec);
+            }
+          }
+        });
+      } else {
+        ytPlayer.loadVideoById({ videoId: youtubeId, startSeconds: startSec, endSeconds: vars.end });
+      }
+    } catch {
+      fallbackMode = true;
+      renderFallbackIframe({ youtubeId, startSec, endSec });
+      scheduleFallbackAdvance(startSec, endSec);
+    }
+  }
+
+  // El parámetro "end" hace que YouTube PAUSE el vídeo al llegar ahí,
+  // no que llegue a "terminado" (ENDED) — y ese mismo estado PAUSADO
+  // es el que dispara si el usuario pausa el vídeo él mismo a mitad,
+  // para poder revisar la jugada con calma. Para no confundir un pause
+  // manual con "se acabó el corte", se mira el tiempo real reproducido
+  // (getCurrentTime): solo si ya está en el fin del corte se considera
+  // acabado de verdad; si el usuario lo retoma, sigue donde estaba.
+  function handlePlayerStateChange(e) {
+    if (e.data === YT.PlayerState.ENDED) { tryAutoAdvance(); return; }
+    if (e.data === YT.PlayerState.PAUSED && currentVideoParams && Number.isFinite(currentVideoParams.endSec)) {
+      const reachedEnd = ytPlayer.getCurrentTime() >= currentVideoParams.endSec - 0.5;
+      if (reachedEnd) tryAutoAdvance();
+    }
+  }
+
+  // Sin la API de YouTube (modo de reserva, iframe simple) no hay
+  // forma de saber el estado real del vídeo — ahí sí hace falta un
+  // temporizador por duración conocida, con la limitación de que no
+  // distingue una pausa manual de haber llegado al final.
+  let advanceTimer = null;
+
+  function scheduleFallbackAdvance(startSec, endSec) {
+    if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
+    if (!Number.isFinite(endSec) || endSec <= startSec) return;
+    const ms = (endSec - startSec) * 1000 + 400;
+    advanceTimer = setTimeout(tryAutoAdvance, ms);
+  }
+
+  function replayVideo() {
+    advanceFired = false;
+    if (fallbackMode) {
+      renderFallbackIframe(currentVideoParams);
+      if (currentVideoParams) scheduleFallbackAdvance(currentVideoParams.startSec, currentVideoParams.endSec);
+    } else if (ytPlayer) {
+      ytPlayer.seekTo(currentClipStart, true);
+      ytPlayer.playVideo();
+    }
+  }
+
+  function goToVideo(delta) {
+    const next = currentVideoIndex + delta;
+    if (next < 0 || next >= currentVideoRows.length) return;
+    openVideoModal(currentVideoRows[next], next);
+  }
+
+  function closeVideoModal() {
+    videoModalOverlay.hidden = true;
+    if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
+    if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo(); // corta la reproducción al cerrar
+    else if (fallbackMode) document.getElementById('videoModalPlayer').innerHTML = ''; // sin API no hay pauseVideo: se quita el iframe
+  }
+
+  // El resultado ("Gol"/"Parada"/"Fuera") se colorea distinto según la
+  // pestaña: para jugadores un gol es un éxito (verde) y una parada un
+  // fallo (gris apagado); para portero es justo al revés (una parada es
+  // el éxito del portero). Se distingue mirando el Puesto del registro:
+  // solo los cortes de portero llevan literalmente "Portero" ahí.
+  function openVideoModal(record, index) {
+    currentVideoIndex = index ?? currentVideoRows.indexOf(record);
+    videoModalPrev.disabled = currentVideoIndex <= 0;
+    videoModalNext.disabled = currentVideoIndex < 0 || currentVideoIndex >= currentVideoRows.length - 1;
+
+    const youtubeId = record[COL_YOUTUBE];
+    const startSec = Math.max(0, Math.floor(Number(record[COL_CLIP_START]) || 0));
+    const endSec = Math.floor(Number(record[COL_CLIP_END]));
+    currentClipStart = startSec;
+    currentVideoParams = { youtubeId, startSec, endSec };
+    advanceFired = false;
+
+    if (fallbackMode) { renderFallbackIframe(currentVideoParams); scheduleFallbackAdvance(startSec, endSec); }
+    else if (ytApiReady) loadIntoPlayer(currentVideoParams);
+    else pendingVideo = currentVideoParams;
+
+    videoModalOpenExt.href = `https://www.youtube.com/watch?v=${youtubeId}&t=${startSec}s`;
+
+    // Dos líneas en forma de frase, sin nombres de campo: la primera
+    // sitúa la jugada (partido/parte/tiempo/puesto), la segunda cuenta
+    // qué pasó (jugador — mano, tipo — resultado, con color).
+    const resultado = record['Resultado'] || '';
+    const isPortero = record[COL_PUESTO] === 'Portero';
+    const resultClass = isPortero
+      ? (/parada/i.test(resultado) ? 'is-good' : /gol/i.test(resultado) ? 'is-bad' : '')
+      : (/gol/i.test(resultado) ? 'is-gol' : /parada/i.test(resultado) ? 'is-parada' : '');
+    const playerLabel = record[COL_PLAYER] ? parsePlayer(record[COL_PLAYER]).label : '';
+
+    const line1 = [record[COL_CODE], record['Parte'], record['Tiempo de partido'], record[COL_PUESTO]]
+      .filter(Boolean).map(escapeHtml).join(' · ');
+
+    const manoTipo = [record['Mano'], record['Tipo de lanzamiento']].filter(Boolean).join(', ');
+    const line2 = [playerLabel, manoTipo].filter(Boolean).map(escapeHtml).join(' — ') +
+      (resultado ? ` — <span class="${resultClass}">${escapeHtml(resultado)}</span>` : '');
+
+    document.getElementById('videoModalInfo').innerHTML = `
+      <div class="video-modal-info-line video-modal-info-context">${line1}</div>
+      <div class="video-modal-info-line">${line2}</div>`;
+
+    videoModalOverlay.hidden = false;
   }
 
   const params = new URLSearchParams(location.search)
@@ -203,28 +510,6 @@
                 </div>
               </div>
             </main>
-          </div>
-          <div class="video-modal-overlay" id="videoModalOverlay" hidden>
-            <div class="video-modal">
-              <div class="video-modal-bar">
-                <div class="video-modal-nav">
-                  <button type="button" class="video-modal-navbtn" id="videoModalPrev">◀ Anterior</button>
-                  <button type="button" class="video-modal-navbtn" id="videoModalReplay">↻ Volver a ver</button>
-                  <button type="button" class="video-modal-navbtn" id="videoModalNext">Siguiente ▶</button>
-                </div>
-                <a id="videoModalOpenExt" href="#" target="_blank" rel="noopener" class="video-modal-openext">Abrir en YouTube ↗</a>
-                <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
-              </div>
-              <label class="video-modal-autoadvance">
-                <input type="checkbox" id="videoModalAutoAdvance" checked />
-                Pasar automáticamente al siguiente vídeo al terminar
-              </label>
-              <div class="video-modal-frame">
-                <div id="videoModalPlayer"></div>
-              </div>
-              <div class="video-modal-info" id="videoModalInfo"></div>
-              <div class="video-modal-resize" id="videoModalResize" title="Arrastra para cambiar el tamaño"></div>
-            </div>
           </div>`;
 
         document.getElementById('filtersToggle').addEventListener('click', () => {
@@ -451,10 +736,6 @@
 
         // ── Comparativa de jugadores: siempre visible (actúa también como
         // filtro clicable), salvo que no haya lanzamientos que mostrar.
-        function niceMax(value) {
-          return value <= 0 ? 5 : Math.ceil(value / 5) * 5;
-        }
-
         function renderPlayerComparison(filtered) {
           const panel = document.getElementById('playerComparisonPanel');
           const byPlayer = new Map();
@@ -678,36 +959,8 @@
         // VideoCuts, con un círculo por zona (área proporcional a los
         // lanzamientos, no el radio — si no, el ojo exagera la diferencia)
         // y la misma etiqueta "goles/lanzamientos (%)" que en la comparativa.
-        function parseZoneCode(pos) {
-          const m = (pos || '').match(/^\s*(\S+)\s*·/);
-          return m ? m[1] : null;
-        }
-
-        function zoneCentroid(points) {
-          const cx = points.reduce((s, p) => s + p.x, 0) / points.length;
-          const cy = points.reduce((s, p) => s + p.y, 0) / points.length;
-          return { cx, cy };
-        }
-
-        // Rojo (0%) → amarillo (50%) → verde (100%), mismos tonos que la
-        // paleta de estado (nunca reutilizados como color de serie normal).
-        function lerpChannel(a, b, t) { return Math.round(a + (b - a) * t); }
-        function mixColorRGB(c1, c2, t) {
-          return [lerpChannel(c1[0], c2[0], t), lerpChannel(c1[1], c2[1], t), lerpChannel(c1[2], c2[2], t)];
-        }
-        function rgbStr(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
-        function efficiencyColorRGB(pct) {
-          const RED = [208, 59, 59], YELLOW = [250, 178, 25], GREEN = [12, 163, 12];
-          const t = Math.max(0, Math.min(100, pct));
-          return t <= 50 ? mixColorRGB(RED, YELLOW, t / 50) : mixColorRGB(YELLOW, GREEN, (t - 50) / 50);
-        }
-        function efficiencyColor(pct) { return rgbStr(efficiencyColorRGB(pct)); }
-        // Sobre amarillo (claro) el texto blanco no contrasta lo suficiente;
-        // se elige blanco o tinta oscura según la luminancia del propio relleno.
-        function textColorOn(rgb) {
-          const luminance = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
-          return luminance > 150 ? '#1a1a1a' : '#fff';
-        }
+        // (parseZoneCode, zoneCentroid, efficiencyColor... están arriba del
+        // todo, fuera de este bloque: los usan tanto jugadores como portero)
 
         function renderZonePositionChart(filtered) {
           const byZone = new Map();
@@ -769,8 +1022,6 @@
         // zona (no un círculo, la rejilla ya está a tamaño fijo) con el
         // mismo degradado rojo→amarillo→verde por efectividad y la misma
         // etiqueta "goles/lanzamientos (%)".
-        const GOAL_LABEL_TO_CODE = Object.fromEntries(Object.entries(GOAL_LABELS).map(([code, label]) => [label, code]));
-
         function renderGoalZoneChart(filtered) {
           const byZone = new Map();
           for (const r of filtered) {
@@ -843,234 +1094,9 @@
           renderStats();
         }
 
-        // ── Detalle de lanzamientos: tabla final con cada evento que cumple
-        // los filtros activos, con enlace al vídeo exacto de ese corte (se
-        // abre en un mini-reproductor embebido, con opción de abrirlo en
-        // YouTube en una pestaña nueva).
-        const videoModalOverlay = document.getElementById('videoModalOverlay');
-        const videoModalOpenExt = document.getElementById('videoModalOpenExt');
-        const videoModalPrev = document.getElementById('videoModalPrev');
-        const videoModalNext = document.getElementById('videoModalNext');
-        const videoModalReplay = document.getElementById('videoModalReplay');
-        const videoModalAutoAdvance = document.getElementById('videoModalAutoAdvance');
-        const videoModal = document.querySelector('.video-modal');
-        const videoModalResize = document.getElementById('videoModalResize');
-        document.getElementById('videoModalClose').addEventListener('click', closeVideoModal);
-        videoModalOverlay.addEventListener('click', (e) => { if (e.target === videoModalOverlay) closeVideoModal(); });
-        videoModalPrev.addEventListener('click', () => goToVideo(-1));
-        videoModalNext.addEventListener('click', () => goToVideo(1));
-        videoModalReplay.addEventListener('click', replayVideo);
-
-        // Tamaño del modal de vídeo: se puede arrastrar desde el borde
-        // derecho (el alto lo pone solo el aspect-ratio del vídeo) y se
-        // recuerda entre visitas.
-        try {
-          const savedWidth = localStorage.getItem('vv_videoModalWidth');
-          if (savedWidth) { videoModal.style.maxWidth = 'none'; videoModal.style.width = `${savedWidth}px`; }
-        } catch {}
-
-        videoModalResize.addEventListener('pointerdown', (e) => {
-          e.preventDefault();
-          videoModalResize.setPointerCapture(e.pointerId);
-          const startX = e.clientX;
-          const startWidth = videoModal.getBoundingClientRect().width;
-          videoModal.style.maxWidth = 'none';
-
-          function onMove(ev) {
-            const maxW = Math.min(window.innerWidth * 0.96, 1400);
-            const newWidth = Math.min(maxW, Math.max(320, startWidth + (ev.clientX - startX)));
-            videoModal.style.width = `${newWidth}px`;
-          }
-          function onUp() {
-            document.removeEventListener('pointermove', onMove);
-            document.removeEventListener('pointerup', onUp);
-            try { localStorage.setItem('vv_videoModalWidth', String(Math.round(videoModal.getBoundingClientRect().width))); } catch {}
-          }
-          document.addEventListener('pointermove', onMove);
-          document.addEventListener('pointerup', onUp);
-        });
-
-        // Navegación dentro del modal: la lista de "vídeos disponibles" es la
-        // de la tabla de detalle, en el orden en que se está viendo ahora
-        // mismo (respeta filtros y la columna por la que esté ordenada).
-        let currentVideoRows = [];
-        let currentVideoIndex = -1;
-        let currentClipStart = 0;
-
-        // Reproductor vía la API JS de YouTube (no un <iframe src=...> suelto):
-        // hace falta para saber cuándo termina un corte (avanzar solo al
-        // siguiente) y para poder "volver a ver" sin recargar el iframe. Si
-        // el usuario pulsa "Ver" antes de que la API termine de cargar (script
-        // externo, tarda un poco), se guarda en pendingVideo y se abre en
-        // cuanto esté lista.
-        //
-        // La API puede no llegar nunca a cargar (bloqueadores de anuncios o
-        // de privacidad — Brave Shields, uBlock, etc. — bloquean con
-        // frecuencia justo este script de YouTube). Si no responde en unos
-        // segundos, en vez de dejar el vídeo en negro para siempre, se cae a
-        // un <iframe> normal: se pierde "volver a ver" y el auto-avance,
-        // pero al menos se ve el vídeo.
-        let ytPlayer = null;
-        let ytApiReady = false;
-        let fallbackMode = false;
-        let pendingVideo = null;
-        let currentVideoParams = null;
-
-        window.onYouTubeIframeAPIReady = function () {
-          ytApiReady = true;
-          if (fallbackMode) return; // ya se optó por el iframe simple, no cambiar a mitad de sesión
-          if (pendingVideo) {
-            loadIntoPlayer(pendingVideo);
-            pendingVideo = null;
-          }
-        };
-
-        setTimeout(() => {
-          if (ytApiReady) return;
-          fallbackMode = true;
-          videoModalReplay.title = 'No disponible: no se pudo cargar la API de YouTube (¿bloqueador de anuncios?)';
-          if (pendingVideo) {
-            renderFallbackIframe(pendingVideo);
-            scheduleFallbackAdvance(pendingVideo.startSec, pendingVideo.endSec);
-            pendingVideo = null;
-          }
-        }, 3000);
-
-        function renderFallbackIframe({ youtubeId, startSec, endSec }) {
-          const params = new URLSearchParams({ start: String(startSec), autoplay: '1', rel: '0', r: String(Date.now()) });
-          if (Number.isFinite(endSec) && endSec > startSec) params.set('end', String(endSec));
-          document.getElementById('videoModalPlayer').innerHTML =
-            `<iframe src="https://www.youtube.com/embed/${youtubeId}?${params.toString()}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
-        }
-
-        // Avanza solo al siguiente vídeo cuando toca — nunca dos veces para
-        // el mismo corte, y nunca si el modal ya se cerró o si el usuario ha
-        // desmarcado la casilla.
-        let advanceFired = false;
-
-        function tryAutoAdvance() {
-          if (advanceFired || videoModalOverlay.hidden || !videoModalAutoAdvance.checked) return;
-          advanceFired = true;
-          goToVideo(1);
-        }
-
-        function loadIntoPlayer({ youtubeId, startSec, endSec }) {
-          const vars = { start: startSec, autoplay: 1, rel: 0 };
-          if (Number.isFinite(endSec) && endSec > startSec) vars.end = endSec;
-          try {
-            if (!ytPlayer) {
-              ytPlayer = new YT.Player('videoModalPlayer', {
-                videoId: youtubeId,
-                playerVars: vars,
-                events: {
-                  onStateChange: handlePlayerStateChange,
-                  onError: () => {
-                    fallbackMode = true;
-                    renderFallbackIframe({ youtubeId, startSec, endSec });
-                    scheduleFallbackAdvance(startSec, endSec);
-                  }
-                }
-              });
-            } else {
-              ytPlayer.loadVideoById({ videoId: youtubeId, startSeconds: startSec, endSeconds: vars.end });
-            }
-          } catch {
-            fallbackMode = true;
-            renderFallbackIframe({ youtubeId, startSec, endSec });
-            scheduleFallbackAdvance(startSec, endSec);
-          }
-        }
-
-        // El parámetro "end" hace que YouTube PAUSE el vídeo al llegar ahí,
-        // no que llegue a "terminado" (ENDED) — y ese mismo estado PAUSADO
-        // es el que dispara si el usuario pausa el vídeo él mismo a mitad,
-        // para poder revisar la jugada con calma. Para no confundir un pause
-        // manual con "se acabó el corte", se mira el tiempo real reproducido
-        // (getCurrentTime): solo si ya está en el fin del corte se considera
-        // acabado de verdad; si el usuario lo retoma, sigue donde estaba.
-        function handlePlayerStateChange(e) {
-          if (e.data === YT.PlayerState.ENDED) { tryAutoAdvance(); return; }
-          if (e.data === YT.PlayerState.PAUSED && currentVideoParams && Number.isFinite(currentVideoParams.endSec)) {
-            const reachedEnd = ytPlayer.getCurrentTime() >= currentVideoParams.endSec - 0.5;
-            if (reachedEnd) tryAutoAdvance();
-          }
-        }
-
-        // Sin la API de YouTube (modo de reserva, iframe simple) no hay
-        // forma de saber el estado real del vídeo — ahí sí hace falta un
-        // temporizador por duración conocida, con la limitación de que no
-        // distingue una pausa manual de haber llegado al final.
-        let advanceTimer = null;
-
-        function scheduleFallbackAdvance(startSec, endSec) {
-          if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
-          if (!Number.isFinite(endSec) || endSec <= startSec) return;
-          const ms = (endSec - startSec) * 1000 + 400;
-          advanceTimer = setTimeout(tryAutoAdvance, ms);
-        }
-
-        function replayVideo() {
-          advanceFired = false;
-          if (fallbackMode) {
-            renderFallbackIframe(currentVideoParams);
-            if (currentVideoParams) scheduleFallbackAdvance(currentVideoParams.startSec, currentVideoParams.endSec);
-          } else if (ytPlayer) {
-            ytPlayer.seekTo(currentClipStart, true);
-            ytPlayer.playVideo();
-          }
-        }
-
-        function goToVideo(delta) {
-          const next = currentVideoIndex + delta;
-          if (next < 0 || next >= currentVideoRows.length) return;
-          openVideoModal(currentVideoRows[next], next);
-        }
-
-        function closeVideoModal() {
-          videoModalOverlay.hidden = true;
-          if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
-          if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo(); // corta la reproducción al cerrar
-          else if (fallbackMode) document.getElementById('videoModalPlayer').innerHTML = ''; // sin API no hay pauseVideo: se quita el iframe
-        }
-
-        function openVideoModal(record, index) {
-          currentVideoIndex = index ?? currentVideoRows.indexOf(record);
-          videoModalPrev.disabled = currentVideoIndex <= 0;
-          videoModalNext.disabled = currentVideoIndex < 0 || currentVideoIndex >= currentVideoRows.length - 1;
-
-          const youtubeId = record[COL_YOUTUBE];
-          const startSec = Math.max(0, Math.floor(Number(record[COL_CLIP_START]) || 0));
-          const endSec = Math.floor(Number(record[COL_CLIP_END]));
-          currentClipStart = startSec;
-          currentVideoParams = { youtubeId, startSec, endSec };
-          advanceFired = false;
-
-          if (fallbackMode) { renderFallbackIframe(currentVideoParams); scheduleFallbackAdvance(startSec, endSec); }
-          else if (ytApiReady) loadIntoPlayer(currentVideoParams);
-          else pendingVideo = currentVideoParams;
-
-          videoModalOpenExt.href = `https://www.youtube.com/watch?v=${youtubeId}&t=${startSec}s`;
-
-          // Dos líneas en forma de frase, sin nombres de campo: la primera
-          // sitúa la jugada (partido/parte/tiempo/puesto), la segunda cuenta
-          // qué pasó (jugador — mano, tipo — resultado, con color).
-          const resultado = record['Resultado'] || '';
-          const resultClass = /gol/i.test(resultado) ? 'is-gol' : /parada/i.test(resultado) ? 'is-parada' : '';
-          const playerLabel = record[COL_PLAYER] ? parsePlayer(record[COL_PLAYER]).label : '';
-
-          const line1 = [record[COL_CODE], record['Parte'], record['Tiempo de partido'], hasPuesto ? record[COL_PUESTO] : null]
-            .filter(Boolean).map(escapeHtml).join(' · ');
-
-          const manoTipo = [record['Mano'], record['Tipo de lanzamiento']].filter(Boolean).join(', ');
-          const line2 = [playerLabel, manoTipo].filter(Boolean).map(escapeHtml).join(' — ') +
-            (resultado ? ` — <span class="${resultClass}">${escapeHtml(resultado)}</span>` : '');
-
-          document.getElementById('videoModalInfo').innerHTML = `
-            <div class="video-modal-info-line video-modal-info-context">${line1}</div>
-            <div class="video-modal-info-line">${line2}</div>`;
-
-          videoModalOverlay.hidden = false;
-        }
+        // El modal de vídeo (openVideoModal, closeVideoModal, goToVideo,
+        // replayVideo...) vive arriba del todo, fuera de este bloque: lo usan
+        // tanto esta tabla como la de la pestaña de portero.
 
         // El puesto va entre paréntesis junto al jugador ("11 PABLO X (EI)"),
         // no como columna aparte; y la zona de lanzamiento se lee de la
@@ -1080,10 +1106,6 @@
           const { label } = parsePlayer(r[COL_PLAYER]);
           const code = POSITION_LABEL_TO_CODE[r[COL_PUESTO]];
           return code ? `${label} (${code})` : label;
-        }
-        function formatZoneLabel(pos) {
-          const m = (pos || '').match(/^\s*\S+\s*·\s*(.+)$/);
-          return m ? m[1] : '';
         }
 
         // Columnas de la tabla: "get" es el valor por el que se ordena al
@@ -1179,8 +1201,437 @@
         renderStats();
       }
 
-      // Portero: de momento, deliberadamente sin contenido.
-      panels.portero.innerHTML = '';
+      // Portero: mismas tres visualizaciones que en Jugadores (KPIs, dos
+      // mapas de zona, tabla de detalle + vídeo) pero desde el punto de
+      // vista del portero — el Puesto es siempre "Portero" (desplegable de
+      // jugador plano, sin agrupar) y el % clave es de paradas, no de goles.
+      const porteroEntries = entries.filter((e) => e.mode === 'portero');
+      if (porteroEntries.length === 0) {
+        panels.portero.innerHTML = '<div class="empty-state">Sin datos de portero para este rival todavía.</div>';
+      } else {
+        const gkDatasets = await Promise.all(porteroEntries.map((e) => fetchJSON(`data/lanzamientos/${e.id}.json`)));
+        const gkRecords = gkDatasets.flatMap((d) => d.records);
+
+        panels.portero.innerHTML = `
+          <button type="button" class="filters-toggle" id="filtersToggleGk">☰ Filtros</button>
+          <div class="dash-layout">
+            <aside class="dash-filters" id="dashFiltersGk">
+              <div class="dash-filters-title-row">
+                <div class="dash-filters-title">Filtros</div>
+                <button type="button" class="filters-reset" id="filtersResetGk">Limpiar todo</button>
+              </div>
+              <div class="filters-col" id="filtersColGk"></div>
+            </aside>
+            <main class="dash-main">
+              <div class="panel stat-headline" id="statHeadlineGk"></div>
+              <div class="zones-row">
+                <div class="panel">
+                  <div class="panel-title">Zona de lanzamiento rival</div>
+                  <div id="zonePositionChartGk"></div>
+                </div>
+                <div class="panel">
+                  <div class="panel-title">Zona de portería</div>
+                  <div id="goalZoneChartGk"></div>
+                </div>
+              </div>
+              <div class="panel" id="detailTablePanelGk" hidden>
+                <div class="panel-title">Detalle de lanzamientos</div>
+                <div class="detail-table-wrap">
+                  <table class="detail-table" id="detailTableGk"></table>
+                </div>
+              </div>
+            </main>
+          </div>`;
+
+        document.getElementById('filtersToggleGk').addEventListener('click', () => {
+          document.getElementById('dashFiltersGk').classList.toggle('open');
+        });
+
+        function gkFigure(n, label) {
+          return `<div class="figure"><span class="n">${n}</span><span class="l">${label}</span></div>`;
+        }
+
+        const filtersColGk = document.getElementById('filtersColGk');
+        const gkActiveFilters = {}; // key -> { getValue, selected }
+        const gkFilterComponents = {}; // key -> { setSelected }
+
+        function addGkFilter(key, fieldLabel, column) {
+          const values = [...new Set(gkRecords.map((r) => r[column]).filter(Boolean))].sort();
+          const filter = createDropdownFilter({
+            fieldLabel,
+            options: values.map((v) => ({ value: v, label: v })),
+            onChange: (selected) => { gkActiveFilters[key].selected = selected; renderGkStats(); }
+          });
+          gkActiveFilters[key] = { getValue: (r) => r[column], selected: [] };
+          gkFilterComponents[key] = filter;
+          filtersColGk.appendChild(filter.el);
+        }
+
+        addGkFilter('partido', 'Partido', COL_CODE);
+
+        const gkTimeFilter = createTreeDropdownFilter({
+          fieldLabel: 'Tiempo de juego',
+          groups: buildTimeTree(),
+          onChange: (selected) => { gkActiveFilters.tiempo.selected = selected; renderGkStats(); }
+        });
+        gkActiveFilters.tiempo = { getValue: (r) => computeTimeBucketKey(r), selected: [] };
+        gkFilterComponents.tiempo = gkTimeFilter;
+        filtersColGk.appendChild(gkTimeFilter.el);
+
+        // Portero: el Puesto es siempre "Portero", así que aquí no hace
+        // falta el árbol puesto > jugador que sí usa la pestaña de
+        // Jugadores — un desplegable plano, ordenado por dorsal, basta.
+        const gkPlayerOptions = [...new Set(gkRecords.map((r) => r[COL_PLAYER]).filter(Boolean))]
+          .map((raw) => ({ value: raw, ...parsePlayer(raw) }))
+          .sort((a, b) => a.dorsal - b.dorsal)
+          .map(({ value, label }) => ({ value, label }));
+        const gkPlayerFilter = createDropdownFilter({
+          fieldLabel: 'Portero',
+          options: gkPlayerOptions,
+          onChange: (selected) => { gkActiveFilters.jugador.selected = selected; renderGkStats(); }
+        });
+        gkActiveFilters.jugador = { getValue: (r) => r[COL_PLAYER], selected: [] };
+        gkFilterComponents.jugador = gkPlayerFilter;
+        filtersColGk.appendChild(gkPlayerFilter.el);
+
+        // Filtros simples por columna (sin buscador, ordenados por
+        // frecuencia descendente), igual que Mano/Tipo de lanzamiento en
+        // Jugadores: Posición portero y Tipo de lanzamiento.
+        function addGkSimpleFilter(key, fieldLabel, column) {
+          const counts = new Map();
+          for (const r of gkRecords) {
+            const v = r[column];
+            if (v) counts.set(v, (counts.get(v) || 0) + 1);
+          }
+          const options = [...counts.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([value]) => ({ value, label: value }));
+          if (options.length <= 1) return;
+          const filter = createDropdownFilter({
+            fieldLabel,
+            options,
+            showSearch: false,
+            onChange: (selected) => { gkActiveFilters[key].selected = selected; renderGkStats(); }
+          });
+          gkActiveFilters[key] = { getValue: (r) => r[column], selected: [] };
+          gkFilterComponents[key] = filter;
+          filtersColGk.appendChild(filter.el);
+        }
+
+        addGkSimpleFilter('posicionPortero', 'Posición portero', COL_GK_POSITION);
+        addGkSimpleFilter('tipoLanzamiento', 'Tipo de lanzamiento', 'Tipo de lanzamiento');
+        addGkSimpleFilter('posturaPortero', 'Postura portero', COL_GK_STANCE);
+
+        // Modalidad: en el CSV de portero no hay una columna "Tipo de
+        // evento" como en Jugadores — se deriva combinando los booleanos
+        // "Lanzamiento 7M" y "Contraataque" (como mucho uno de los dos
+        // estará marcado a la vez; si ninguno lo está, es de juego normal).
+        function gkModality(r) {
+          if (r['Lanzamiento 7M']) return '7 metros';
+          if (r['Contraataque']) return 'Contraataques';
+          return 'Juego';
+        }
+        const gkModalityCounts = new Map();
+        for (const r of gkRecords) {
+          const v = gkModality(r);
+          gkModalityCounts.set(v, (gkModalityCounts.get(v) || 0) + 1);
+        }
+        const gkModalityOptions = [...gkModalityCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([value]) => ({ value, label: value }));
+        if (gkModalityOptions.length > 1) {
+          const gkModalityFilter = createDropdownFilter({
+            fieldLabel: 'Modalidad',
+            options: gkModalityOptions,
+            showSearch: false,
+            onChange: (selected) => { gkActiveFilters.modalidad.selected = selected; renderGkStats(); }
+          });
+          gkActiveFilters.modalidad = { getValue: gkModality, selected: [] };
+          gkFilterComponents.modalidad = gkModalityFilter;
+          filtersColGk.appendChild(gkModalityFilter.el);
+        }
+
+        // Zona de lanzamiento y zona de portería, igual que en Jugadores,
+        // se activan solo al pulsar sobre su gráfico, sin desplegable propio.
+        gkActiveFilters.zonaLanzamiento = { getValue: (r) => parseZoneCode(r[COL_POSITION]), selected: [] };
+        gkActiveFilters.zonaPorteria = { getValue: (r) => GOAL_LABEL_TO_CODE[r[COL_GOAL]] || null, selected: [] };
+
+        document.getElementById('filtersResetGk').addEventListener('click', () => {
+          for (const key of Object.keys(gkActiveFilters)) {
+            gkActiveFilters[key].selected = [];
+            if (gkFilterComponents[key]) gkFilterComponents[key].setSelected([]);
+          }
+          renderGkStats();
+        });
+
+        function gkFilteredExcept(...excludeKeys) {
+          return gkRecords.filter((r) =>
+            Object.entries(gkActiveFilters).every(([key, { getValue, selected }]) =>
+              excludeKeys.includes(key) || selected.length === 0 || selected.includes(getValue(r))
+            )
+          );
+        }
+
+        // % paradas = paradas / (goles + paradas) — a propósito, no paradas
+        // / total de lanzamientos: puede haber lanzamientos "Fuera" en los
+        // que el portero no interviene, y no deben contar en este cociente
+        // (aunque sí en el nº de lanzamientos recibidos y en el tamaño de
+        // las burbujas/celdas de los mapas de zona).
+        function savePct(paradas, goles) {
+          const denom = paradas + goles;
+          return denom > 0 ? Math.round((paradas / denom) * 100) : null;
+        }
+
+        function renderGkStats() {
+          const filtered = gkFilteredExcept();
+
+          const lanzamientos = filtered.length;
+          const paradas = filtered.filter((r) => r['Resultado'] === 'Parada').length;
+          const goles = filtered.filter((r) => r['Resultado'] === 'Gol').length;
+          const pct = savePct(paradas, goles);
+
+          document.getElementById('statHeadlineGk').innerHTML =
+            gkFigure(lanzamientos, 'lanzamientos recibidos') +
+            gkFigure(paradas, 'paradas') +
+            gkFigure(goles, 'goles encajados') +
+            gkFigure(pct === null ? '—' : `${pct}%`, '% paradas');
+
+          renderGkZonePositionChart(gkFilteredExcept('zonaLanzamiento'));
+          renderGkGoalZoneChart(gkFilteredExcept('zonaPorteria'));
+          renderGkDetailTable(filtered);
+        }
+
+        // ── Zona de lanzamiento rival: mismas 13 zonas e imagen de pista
+        // que en Jugadores. El tamaño de la burbuja es proporcional a TODOS
+        // los lanzamientos recibidos desde esa zona (incluidos los que
+        // acaban fuera); el color y el % que se muestra son el % de
+        // paradas, que excluye los "Fuera" (ver savePct).
+        function renderGkZonePositionChart(filtered) {
+          const byZone = new Map();
+          for (const r of filtered) {
+            const code = parseZoneCode(r[COL_POSITION]);
+            if (!code) continue;
+            const entry = byZone.get(code) || { total: 0, paradas: 0, goles: 0 };
+            entry.total++;
+            if (r['Resultado'] === 'Parada') entry.paradas++;
+            else if (r['Resultado'] === 'Gol') entry.goles++;
+            byZone.set(code, entry);
+          }
+
+          const maxCount = Math.max(1, ...[...byZone.values()].map((z) => z.total));
+          const MIN_R = 10, MAX_R = 46;
+          const selectedZones = gkActiveFilters.zonaLanzamiento.selected;
+
+          const bubblesSvg = SHOT_ZONES.map((z) => {
+            const data = byZone.get(z.code);
+            if (!data || data.total === 0) return '';
+            const { cx, cy } = zoneCentroid(z.points);
+            const r = MIN_R + (MAX_R - MIN_R) * Math.sqrt(data.total / maxCount);
+            const pct = savePct(data.paradas, data.goles);
+            const color = pct === null ? '#555' : efficiencyColor(pct);
+            const labelBelow = cy + r + 20 <= COURT_H;
+            const labelY = labelBelow ? cy + r + 14 : cy - r - 8;
+            const isSelected = selectedZones.includes(z.code);
+            const isDimmed = selectedZones.length > 0 && !isSelected;
+            const strokeColor = isSelected ? '#ffffff' : color;
+            const strokeWidth = isSelected ? 3 : 1.5;
+            const label = pct === null ? `${data.total} (fuera)` : `${data.paradas}/${data.paradas + data.goles} (${pct}%)`;
+            return `
+              <g class="zone-bubble-clickable" data-code="${z.code}" opacity="${isDimmed ? 0.35 : 1}">
+                <circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" fill-opacity="0.8" stroke="${strokeColor}" stroke-width="${strokeWidth}">
+                  <title>${escapeHtml(z.name)} — ${label}</title>
+                </circle>
+                <text x="${cx}" y="${labelY}" text-anchor="middle" fill="#e0e0e0" font-size="12" font-weight="600" style="pointer-events:none">${label}</text>
+              </g>`;
+          }).join('');
+
+          document.getElementById('zonePositionChartGk').innerHTML = `
+            <svg viewBox="0 0 ${COURT_W} ${COURT_H}" class="zone-bubble-svg" role="img" aria-label="Zona de lanzamiento rival: paradas y goles por zona">
+              <image href="assets/half-court.png" x="0" y="0" width="${COURT_W}" height="${COURT_H}" />
+              ${bubblesSvg}
+            </svg>`;
+
+          document.querySelectorAll('#zonePositionChartGk .zone-bubble-clickable').forEach((g) => {
+            g.addEventListener('click', () => toggleGkZoneFilter(g.dataset.code));
+          });
+        }
+
+        function toggleGkZoneFilter(code) {
+          const cur = gkActiveFilters.zonaLanzamiento.selected;
+          gkActiveFilters.zonaLanzamiento.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          renderGkStats();
+        }
+
+        // ── Zona de portería: misma rejilla 3x3 + franjas de "fuera" que en
+        // Jugadores, coloreada por % de paradas (excluyendo "Fuera").
+        function renderGkGoalZoneChart(filtered) {
+          const byZone = new Map();
+          for (const r of filtered) {
+            const code = GOAL_LABEL_TO_CODE[r[COL_GOAL]];
+            if (!code) continue;
+            const entry = byZone.get(code) || { total: 0, paradas: 0, goles: 0 };
+            entry.total++;
+            if (r['Resultado'] === 'Parada') entry.paradas++;
+            else if (r['Resultado'] === 'Gol') entry.goles++;
+            byZone.set(code, entry);
+          }
+
+          const { cols, cellW, cellH, post, outSide, outTop } = GOAL_LAYOUT;
+          const gridW = cols * cellW;
+          const gridH = 3 * cellH;
+          const gridX = outSide + post;
+          const gridY = outTop + post;
+          const width = gridW + post * 2 + outSide * 2;
+          const height = gridH + post * 2 + outTop;
+          const selectedZones = gkActiveFilters.zonaPorteria.selected;
+
+          function cellSvg(code, x, y, w, h) {
+            const data = byZone.get(code);
+            if (!data || data.total === 0) {
+              return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#1c1c1c" stroke="#333" stroke-width="1" />`;
+            }
+            const pct = savePct(data.paradas, data.goles);
+            const rgb = pct === null ? [85, 85, 85] : efficiencyColorRGB(pct);
+            const fill = rgbStr(rgb);
+            const textColor = textColorOn(rgb);
+            const cx = x + w / 2, cy = y + h / 2;
+            const isSelected = selectedZones.includes(code);
+            const isDimmed = selectedZones.length > 0 && !isSelected;
+            const strokeColor = isSelected ? '#ffffff' : fill;
+            const strokeWidth = isSelected ? 3 : 1;
+            const line1 = pct === null ? `${data.total}` : `${data.paradas}/${data.paradas + data.goles}`;
+            const line2 = pct === null ? '(fuera)' : `(${pct}%)`;
+            return `
+              <g class="goal-cell-clickable" data-code="${code}" opacity="${isDimmed ? 0.35 : 1}">
+                <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="${strokeColor}" stroke-width="${strokeWidth}">
+                  <title>${escapeHtml(GOAL_LABELS[code])} — ${line1} paradas ${line2}</title>
+                </rect>
+                <text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700" style="pointer-events:none">${line1}</text>
+                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10" style="pointer-events:none">${line2}</text>
+              </g>`;
+          }
+
+          const inner = GOAL_INNER_ZONES.map((code, i) => {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            return cellSvg(code, gridX + col * cellW, gridY + row * cellH, cellW, cellH);
+          }).join('');
+
+          const outer = cellSvg('out-top', gridX, 0, gridW, outTop) +
+            cellSvg('out-left', 0, gridY, outSide, gridH) +
+            cellSvg('out-right', gridX + gridW, gridY, outSide, gridH);
+
+          document.getElementById('goalZoneChartGk').innerHTML = `
+            <svg viewBox="0 0 ${width} ${height}" class="goal-zone-svg" role="img" aria-label="Zona de portería: paradas y goles por zona">
+              ${outer}
+              <rect x="${gridX - post / 2}" y="${gridY - post / 2}" width="${gridW + post}" height="${gridH + post}" fill="none" stroke="#666" stroke-width="${post}" />
+              ${inner}
+            </svg>`;
+
+          document.querySelectorAll('#goalZoneChartGk .goal-cell-clickable').forEach((g) => {
+            g.addEventListener('click', () => toggleGkGoalZoneFilter(g.dataset.code));
+          });
+        }
+
+        function toggleGkGoalZoneFilter(code) {
+          const cur = gkActiveFilters.zonaPorteria.selected;
+          gkActiveFilters.zonaPorteria.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          renderGkStats();
+        }
+
+        // Puesto es siempre "Portero" aquí, así que la columna Jugador no
+        // necesita el paréntesis con el código de puesto que sí lleva en
+        // Jugadores; tampoco hay columna Mano (no aplica a un portero).
+        let gkDetailSort = { key: null, dir: 'asc' };
+
+        const GK_DETAIL_COLUMNS = [
+          { key: 'partido', label: 'Partido', get: (r) => r[COL_CODE] || '' },
+          { key: 'parte', label: 'Parte', get: (r) => r['Parte'] || '' },
+          { key: 'tiempo', label: 'Tiempo', get: (r) => r['Tiempo de partido'] || '' },
+          {
+            key: 'jugador', label: 'Portero',
+            get: (r) => r[COL_PLAYER] ? parsePlayer(r[COL_PLAYER]).dorsal : Infinity,
+            display: (r) => r[COL_PLAYER] ? parsePlayer(r[COL_PLAYER]).label : ''
+          },
+          { key: 'zona', label: 'Zona', get: (r) => formatZoneLabel(r[COL_POSITION]) },
+          { key: 'tipo', label: 'Tipo', get: (r) => r['Tipo de lanzamiento'] || '' },
+          {
+            key: 'resultado', label: 'Resultado', get: (r) => r['Resultado'] || '',
+            cls: (r) => (r['Resultado'] === 'Parada' ? 'is-good' : r['Resultado'] === 'Gol' ? 'is-bad' : '')
+          }
+        ];
+
+        function renderGkDetailTable(filtered) {
+          const panel = document.getElementById('detailTablePanelGk');
+          if (filtered.length === 0) { panel.hidden = true; return; }
+          panel.hidden = false;
+
+          let rows = [...filtered].sort((a, b) => {
+            const codeA = a[COL_CODE] || '', codeB = b[COL_CODE] || '';
+            if (codeA !== codeB) return codeA < codeB ? -1 : 1;
+            const partA = a['Parte'] || '', partB = b['Parte'] || '';
+            if (partA !== partB) return partA < partB ? -1 : 1;
+            return (a['Tiempo de partido'] || '').localeCompare(b['Tiempo de partido'] || '');
+          });
+
+          if (gkDetailSort.key) {
+            const col = GK_DETAIL_COLUMNS.find((c) => c.key === gkDetailSort.key);
+            const dir = gkDetailSort.dir === 'desc' ? -1 : 1;
+            rows = rows
+              .map((r, i) => ({ r, i }))
+              .sort((a, b) => {
+                const va = col.get(a.r), vb = col.get(b.r);
+                const cmp = typeof va === 'number' && typeof vb === 'number'
+                  ? va - vb
+                  : String(va).localeCompare(String(vb), 'es');
+                return cmp !== 0 ? cmp * dir : a.i - b.i;
+              })
+              .map(({ r }) => r);
+          }
+
+          const headCells = GK_DETAIL_COLUMNS.map((col) => {
+            const active = gkDetailSort.key === col.key;
+            const arrow = active ? (gkDetailSort.dir === 'desc' ? ' ▼' : ' ▲') : '';
+            return `<th class="sortable" data-key="${col.key}">${escapeHtml(col.label)}${arrow}</th>`;
+          }).join('');
+          const head = `<thead><tr>${headCells}<th>Vídeo</th></tr></thead>`;
+
+          const videoRows = rows.filter((r) => r[COL_YOUTUBE]);
+          currentVideoRows = videoRows;
+          let videoCounter = 0;
+
+          const body = rows.map((r) => {
+            const cells = GK_DETAIL_COLUMNS.map((col) => {
+              const value = col.display ? col.display(r) : col.get(r);
+              const cls = col.cls ? col.cls(r) : '';
+              return `<td class="${cls}">${escapeHtml(value)}</td>`;
+            }).join('');
+            const videoCell = r[COL_YOUTUBE]
+              ? `<button type="button" class="video-link" data-row-idx="${videoCounter++}">▶ Ver</button>`
+              : '<span class="detail-table-empty">—</span>';
+            return `<tr>${cells}<td>${videoCell}</td></tr>`;
+          }).join('');
+
+          document.getElementById('detailTableGk').innerHTML = head + `<tbody>${body}</tbody>`;
+
+          document.querySelectorAll('#detailTableGk .video-link').forEach((btn) => {
+            const idx = Number(btn.dataset.rowIdx);
+            btn.addEventListener('click', () => openVideoModal(videoRows[idx], idx));
+          });
+
+          document.querySelectorAll('#detailTableGk th.sortable').forEach((th) => {
+            th.addEventListener('click', () => {
+              const key = th.dataset.key;
+              gkDetailSort = gkDetailSort.key === key
+                ? { key, dir: gkDetailSort.dir === 'asc' ? 'desc' : 'asc' }
+                : { key, dir: 'asc' };
+              renderGkDetailTable(filtered);
+            });
+          });
+        }
+
+        renderGkStats();
+      }
     } catch (err) {
       panels.jugadores.innerHTML = `<div class="empty-state">No se han podido cargar los datos. ${escapeHtml(err.message)}</div>`;
     }
