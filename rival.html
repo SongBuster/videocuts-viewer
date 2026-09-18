@@ -919,7 +919,12 @@
                 videoId: youtubeId,
                 playerVars: vars,
                 events: {
-                  onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED && videoModalAutoAdvance.checked) goToVideo(1); },
+                  // El parámetro "end" hace que YouTube PAUSE el vídeo en ese
+                  // punto, no que llegue a "terminado" — con "end" definido
+                  // este evento nunca dispara ENDED, así que el auto-avance
+                  // de verdad va por temporizador (ver scheduleAutoAdvance).
+                  // Sin "end" (fallback si el corte no trae fin) sí sirve.
+                  onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) tryAutoAdvance(); },
                   onError: () => { fallbackMode = true; renderFallbackIframe({ youtubeId, startSec, endSec }); }
                 }
               });
@@ -932,11 +937,35 @@
           }
         }
 
+        // Avanza solo al siguiente vídeo cuando toca — nunca dos veces para
+        // el mismo corte (por si el temporizador y un evento ENDED
+        // coincidieran), y nunca si el modal ya se cerró.
+        let advanceTimer = null;
+        let advanceFired = false;
+
+        function tryAutoAdvance() {
+          if (advanceFired || videoModalOverlay.hidden || !videoModalAutoAdvance.checked) return;
+          advanceFired = true;
+          goToVideo(1);
+        }
+
+        // El estado ENDED del reproductor no es fiable cuando el corte tiene
+        // un "fin" definido (ver arriba) — como sí sabemos cuánto dura el
+        // corte (fin - inicio), se programa el avance directamente por
+        // temporizador; es lo mismo tanto si hay API de YouTube como en el
+        // <iframe> de reserva sin ella.
+        function scheduleAutoAdvance(startSec, endSec) {
+          if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
+          advanceFired = false;
+          if (!Number.isFinite(endSec) || endSec <= startSec) return; // sin fin conocido: irá por ENDED
+          const ms = (endSec - startSec) * 1000 + 400; // margen para el arranque/buffering
+          advanceTimer = setTimeout(tryAutoAdvance, ms);
+        }
+
         function replayVideo() {
-          if (fallbackMode) { renderFallbackIframe(currentVideoParams); return; }
-          if (!ytPlayer) return;
-          ytPlayer.seekTo(currentClipStart, true);
-          ytPlayer.playVideo();
+          if (fallbackMode) { renderFallbackIframe(currentVideoParams); }
+          else if (ytPlayer) { ytPlayer.seekTo(currentClipStart, true); ytPlayer.playVideo(); }
+          if (currentVideoParams) scheduleAutoAdvance(currentVideoParams.startSec, currentVideoParams.endSec);
         }
 
         function goToVideo(delta) {
@@ -947,6 +976,7 @@
 
         function closeVideoModal() {
           videoModalOverlay.hidden = true;
+          if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
           if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo(); // corta la reproducción al cerrar
           else if (fallbackMode) document.getElementById('videoModalPlayer').innerHTML = ''; // sin API no hay pauseVideo: se quita el iframe
         }
@@ -961,6 +991,7 @@
           const endSec = Math.floor(Number(record[COL_CLIP_END]));
           currentClipStart = startSec;
           currentVideoParams = { youtubeId, startSec, endSec };
+          scheduleAutoAdvance(startSec, endSec);
 
           if (fallbackMode) renderFallbackIframe(currentVideoParams);
           else if (ytApiReady) loadIntoPlayer(currentVideoParams);
