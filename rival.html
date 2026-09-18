@@ -66,6 +66,11 @@
   <div class="tab-panel" id="tab-jugadores"></div>
   <div class="tab-panel" id="tab-portero" hidden></div>
 
+  <!-- API de YouTube: permite controlar el reproductor del modal de vídeo
+       (volver a ver, avanzar al siguiente corte al terminar el actual) sin
+       depender solo de los parámetros de la URL del iframe. -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+
 <script type="module">
   import { fetchJSON, escapeHtml } from './assets/app.js'
   import { createDropdownFilter, createTreeDropdownFilter, buildTimeTree, computeTimeBucketKey } from './assets/dropdown-filter.js'
@@ -200,13 +205,14 @@
               <div class="video-modal-bar">
                 <div class="video-modal-nav">
                   <button type="button" class="video-modal-navbtn" id="videoModalPrev">◀ Anterior</button>
+                  <button type="button" class="video-modal-navbtn" id="videoModalReplay">↻ Volver a ver</button>
                   <button type="button" class="video-modal-navbtn" id="videoModalNext">Siguiente ▶</button>
                 </div>
                 <a id="videoModalOpenExt" href="#" target="_blank" rel="noopener" class="video-modal-openext">Abrir en YouTube ↗</a>
                 <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
               </div>
               <div class="video-modal-frame">
-                <iframe id="videoModalIframe" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                <div id="videoModalPlayer"></div>
               </div>
               <div class="video-modal-info" id="videoModalInfo"></div>
             </div>
@@ -833,20 +839,62 @@
         // abre en un mini-reproductor embebido, con opción de abrirlo en
         // YouTube en una pestaña nueva).
         const videoModalOverlay = document.getElementById('videoModalOverlay');
-        const videoModalIframe = document.getElementById('videoModalIframe');
         const videoModalOpenExt = document.getElementById('videoModalOpenExt');
         const videoModalPrev = document.getElementById('videoModalPrev');
         const videoModalNext = document.getElementById('videoModalNext');
+        const videoModalReplay = document.getElementById('videoModalReplay');
         document.getElementById('videoModalClose').addEventListener('click', closeVideoModal);
         videoModalOverlay.addEventListener('click', (e) => { if (e.target === videoModalOverlay) closeVideoModal(); });
         videoModalPrev.addEventListener('click', () => goToVideo(-1));
         videoModalNext.addEventListener('click', () => goToVideo(1));
+        videoModalReplay.addEventListener('click', replayVideo);
 
         // Navegación dentro del modal: la lista de "vídeos disponibles" es la
         // de la tabla de detalle, en el orden en que se está viendo ahora
         // mismo (respeta filtros y la columna por la que esté ordenada).
         let currentVideoRows = [];
         let currentVideoIndex = -1;
+        let currentClipStart = 0;
+
+        // Reproductor vía la API JS de YouTube (no un <iframe src=...> suelto):
+        // hace falta para saber cuándo termina un corte (avanzar solo al
+        // siguiente) y para poder "volver a ver" sin recargar el iframe. Si
+        // el usuario pulsa "Ver" antes de que la API termine de cargar (script
+        // externo, tarda un poco), se guarda en pendingVideo y se abre en
+        // cuanto esté lista.
+        let ytPlayer = null;
+        let ytApiReady = false;
+        let pendingVideo = null;
+
+        window.onYouTubeIframeAPIReady = function () {
+          ytApiReady = true;
+          if (pendingVideo) {
+            loadIntoPlayer(pendingVideo);
+            pendingVideo = null;
+          }
+        };
+
+        function loadIntoPlayer({ youtubeId, startSec, endSec }) {
+          const vars = { start: startSec, autoplay: 1, rel: 0 };
+          if (Number.isFinite(endSec) && endSec > startSec) vars.end = endSec;
+          if (!ytPlayer) {
+            ytPlayer = new YT.Player('videoModalPlayer', {
+              videoId: youtubeId,
+              playerVars: vars,
+              events: {
+                onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) goToVideo(1); }
+              }
+            });
+          } else {
+            ytPlayer.loadVideoById({ videoId: youtubeId, startSeconds: startSec, endSeconds: vars.end });
+          }
+        }
+
+        function replayVideo() {
+          if (!ytPlayer) return;
+          ytPlayer.seekTo(currentClipStart, true);
+          ytPlayer.playVideo();
+        }
 
         function goToVideo(delta) {
           const next = currentVideoIndex + delta;
@@ -856,7 +904,7 @@
 
         function closeVideoModal() {
           videoModalOverlay.hidden = true;
-          videoModalIframe.src = ''; // corta la reproducción al cerrar
+          if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo(); // corta la reproducción al cerrar
         }
 
         function openVideoModal(record, index) {
@@ -867,9 +915,11 @@
           const youtubeId = record[COL_YOUTUBE];
           const startSec = Math.max(0, Math.floor(Number(record[COL_CLIP_START]) || 0));
           const endSec = Math.floor(Number(record[COL_CLIP_END]));
-          const embedParams = new URLSearchParams({ start: String(startSec), autoplay: '1', rel: '0' });
-          if (Number.isFinite(endSec) && endSec > startSec) embedParams.set('end', String(endSec));
-          videoModalIframe.src = `https://www.youtube.com/embed/${youtubeId}?${embedParams.toString()}`;
+          currentClipStart = startSec;
+
+          if (ytApiReady) loadIntoPlayer({ youtubeId, startSec, endSec });
+          else pendingVideo = { youtubeId, startSec, endSec };
+
           videoModalOpenExt.href = `https://www.youtube.com/watch?v=${youtubeId}&t=${startSec}s`;
 
           // Dos líneas en forma de frase, sin nombres de campo: la primera
