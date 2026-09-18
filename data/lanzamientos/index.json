@@ -1,18 +1,18 @@
 [
   {
-    "id": "jugadores-ubu-san-pablo-burgos-j1",
-    "mode": "jugadores",
-    "team": "UBU SAN PABLO BURGOS",
-    "code": "J1",
-    "rowCount": 46,
-    "generatedAt": "2026-09-17T06:18:25.572Z"
-  },
-  {
     "id": "jugadores-balonmano-guadalajara-j1",
     "mode": "jugadores",
     "team": "BALONMANO GUADALAJARA",
     "code": "J1",
     "rowCount": 42,
     "generatedAt": "2026-09-18T06:59:51.583Z"
+  },
+  {
+    "id": "jugadores-ubu-san-pablo-burgos-j1",
+    "mode": "jugadores",
+    "team": "UBU SAN PABLO BURGOS",
+    "code": "J1",
+    "rowCount": 46,
+    "generatedAt": "2026-09-18T08:05:51.116Z"
   }
 ]
