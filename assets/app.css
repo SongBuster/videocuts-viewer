@@ -167,7 +167,7 @@ button { font-family: inherit; }
 .dd-filter-list { max-height: 260px; overflow-y: auto; }
 .dd-filter-empty { color: #555; font-size: 12px; padding: 10px 6px; text-align: center; }
 .dd-filter-row-group { font-weight: 600; padding-left: 2px; }
-.dd-filter-row-child { padding-left: 26px; }
+.dd-filter-row-child { padding-left: 42px; }
 .dd-filter-row-child .dd-filter-row-label { color: #bbb; }
 .dd-filter-expand {
   background: none; border: none; color: #888; cursor: pointer; font-size: 10px;
@@ -188,4 +188,4 @@ button { font-family: inherit; }
 .zones-row > .panel { flex: 1 1 320px; min-width: 280px; }
 
 /* ── Gráficos interactivos: pulsar un elemento filtra el resto de la página ── */
-.player-bar-group, .zone-bubble-clickable, .goal-cell-clickable { cursor: pointer; }
+.player-bar-group, .zone-bubble-clickable, .goal-cell-clickable, .position-bar-group { cursor: pointer; }

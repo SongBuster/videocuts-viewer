@@ -61,6 +61,27 @@
   const COL_CODE = 'Codigo'
   const COL_POSITION = 'Posición'
   const COL_GOAL = 'Portería'
+  const COL_PUESTO = 'Puesto'
+
+  // Mismos códigos y orden que en VideoCuts (shared/types.ts): de un extremo
+  // al otro de la pista, con portero y pivote en medio. No incluye DF
+  // (especialista defensivo): ese jugador prácticamente no lanza.
+  const POSITION_ORDER = ['EI', 'LI', 'PI', 'PT', 'CT', 'LD', 'ED']
+  const POSITION_LABELS = {
+    EI: 'Extremo izquierdo', LI: 'Lateral izquierdo', PI: 'Pivote', PT: 'Portero',
+    CT: 'Central', LD: 'Lateral derecho', ED: 'Extremo derecho'
+  }
+  // Para el eje X del gráfico de puesto: si no cabe el nombre completo, se
+  // prueba una abreviatura antes de caer al código de dos letras.
+  const POSITION_LABELS_SHORT = {
+    EI: 'Ext Izq', LI: 'Lat Izq', PI: 'Pivote', PT: 'Portero', CT: 'Central', LD: 'Lat Der', ED: 'Ext Der'
+  }
+  // El CSV trae el nombre completo ("Extremo izquierdo"), no el código — el
+  // desplegable de la plantilla exporta la etiqueta, igual que "Mano". Un
+  // valor antiguo (texto libre de antes de que el puesto fuera una lista
+  // cerrada, p.ej. "CE") simplemente no encuentra código y cuenta como "sin
+  // puesto definido", en vez de romper nada.
+  const POSITION_LABEL_TO_CODE = Object.fromEntries(Object.entries(POSITION_LABELS).map(([code, label]) => [label, code]))
 
   // El CSV trae "#33 NOMBRE" — para el desplegable interesa ordenar por
   // dorsal numérico (no como texto: "#10" iría antes que "#2") y sin el "#",
@@ -104,6 +125,12 @@
         const datasets = await Promise.all(jugadoresEntries.map((e) => fetchJSON(`data/lanzamientos/${e.id}.json`)));
         const records = datasets.flatMap((d) => d.records);
 
+        // Puesto solo existe en CSVs exportados con la versión de VideoCuts
+        // que lo incluye — si el rival no lo tiene relleno, ni el gráfico ni
+        // la agrupación del filtro de Jugador se muestran, en vez de salir
+        // vacíos o "sin definir" en todos los jugadores.
+        const hasPuesto = records.some((r) => r[COL_PUESTO]);
+
         panels.jugadores.innerHTML = `
           <button type="button" class="filters-toggle" id="filtersToggle">☰ Filtros</button>
           <div class="dash-layout">
@@ -121,6 +148,15 @@
                 </div>
                 <div id="playerComparisonChart"></div>
               </div>
+              ${hasPuesto ? `
+              <div class="panel" id="positionEfficacyPanel" hidden>
+                <div class="panel-title">Efectividad por puesto</div>
+                <div class="chart-legend">
+                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#3b82f6"></span>Lanzamientos</span>
+                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
+                </div>
+                <div id="positionEfficacyChart"></div>
+              </div>` : ''}
               <div class="zones-row">
                 <div class="panel">
                   <div class="panel-title">Zona de lanzamiento</div>
@@ -166,15 +202,55 @@
         activeFilters.tiempo = { getValue: (r) => computeTimeBucketKey(r), selected: [] };
         filtersCol.appendChild(timeFilter.el);
 
-        const playerOptions = [...new Set(records.map((r) => r[COL_PLAYER]).filter(Boolean))]
-          .map((raw) => ({ value: raw, ...parsePlayer(raw) }))
-          .sort((a, b) => a.dorsal - b.dorsal)
-          .map(({ value, label }) => ({ value, label }));
-        const playerFilter = createDropdownFilter({
-          fieldLabel: 'Jugador',
-          options: playerOptions,
-          onChange: (selected) => { activeFilters.jugador.selected = selected; renderStats(); }
-        });
+        // Jugador: si hay "Puesto" relleno, agrupado en árbol (puesto >
+        // jugadores, igual que Tiempo de juego); si no, el desplegable plano
+        // de siempre. Los jugadores sin puesto van a un grupo aparte, para
+        // que no desaparezcan del filtro.
+        function playersToOptions(rawValues) {
+          return [...rawValues]
+            .map((raw) => ({ value: raw, ...parsePlayer(raw) }))
+            .sort((a, b) => a.dorsal - b.dorsal)
+            .map(({ value, label }) => ({ value, label }));
+        }
+
+        let playerFilter;
+        if (hasPuesto) {
+          const byPosition = new Map();
+          const sinPuesto = new Set();
+          for (const r of records) {
+            const raw = r[COL_PLAYER];
+            if (!raw) continue;
+            const code = POSITION_LABEL_TO_CODE[r[COL_PUESTO]];
+            if (code) {
+              if (!byPosition.has(code)) byPosition.set(code, new Set());
+              byPosition.get(code).add(raw);
+            } else {
+              sinPuesto.add(raw);
+            }
+          }
+          const groups = POSITION_ORDER
+            .filter((code) => byPosition.has(code))
+            .map((code) => ({
+              value: code,
+              label: `${code} · ${POSITION_LABELS[code]}`,
+              children: playersToOptions(byPosition.get(code))
+            }));
+          if (sinPuesto.size > 0) {
+            groups.push({ value: '__sin_puesto__', label: 'Sin puesto definido', children: playersToOptions(sinPuesto) });
+          }
+          playerFilter = createTreeDropdownFilter({
+            fieldLabel: 'Jugador',
+            groups,
+            onChange: (selected) => { activeFilters.jugador.selected = selected; renderStats(); }
+          });
+        } else {
+          const playerOptions = playersToOptions(new Set(records.map((r) => r[COL_PLAYER]).filter(Boolean)));
+          playerFilter = createDropdownFilter({
+            fieldLabel: 'Jugador',
+            options: playerOptions,
+            onChange: (selected) => { activeFilters.jugador.selected = selected; renderStats(); }
+          });
+        }
         activeFilters.jugador = { getValue: (r) => r[COL_PLAYER], selected: [] };
         filtersCol.appendChild(playerFilter.el);
 
@@ -255,6 +331,9 @@
         // gráfico correspondiente (ver toggleZoneFilter/toggleGoalZoneFilter).
         activeFilters.zonaLanzamiento = { getValue: (r) => parseZoneCode(r[COL_POSITION]), selected: [] };
         activeFilters.zonaPorteria = { getValue: (r) => GOAL_LABEL_TO_CODE[r[COL_GOAL]] || null, selected: [] };
+        if (hasPuesto) {
+          activeFilters.puesto = { getValue: (r) => POSITION_LABEL_TO_CODE[r[COL_PUESTO]] || null, selected: [] };
+        }
 
         function figure(n, label) {
           return `<div class="figure"><span class="n">${n}</span><span class="l">${label}</span></div>`;
@@ -291,6 +370,7 @@
           renderPlayerComparison(filteredExcept('jugador'));
           renderZonePositionChart(filteredExcept('zonaLanzamiento'));
           renderGoalZoneChart(filteredExcept('zonaPorteria'));
+          if (hasPuesto) renderPositionEfficacyChart(filteredExcept('puesto'));
         }
 
         // ── Comparativa de jugadores: siempre visible (actúa también como
@@ -344,6 +424,117 @@
           activeFilters.jugador.selected = next;
           playerFilter.setSelected(next);
           renderStats();
+        }
+
+        // ── Efectividad por puesto: mismo formato que la comparativa de
+        // jugadores (columnas lanzamientos/goles + etiqueta), pero agrupado
+        // por puesto y en el orden fijo de la pista (no por frecuencia).
+        // También actúa como filtro clicable, igual que el resto.
+        function renderPositionEfficacyChart(filtered) {
+          const panel = document.getElementById('positionEfficacyPanel');
+          const byPosition = new Map();
+          for (const r of filtered) {
+            const code = POSITION_LABEL_TO_CODE[r[COL_PUESTO]];
+            if (!code) continue;
+            const entry = byPosition.get(code) || { lanzamientos: 0, goles: 0 };
+            entry.lanzamientos++;
+            if (/gol/i.test(r['Resultado'] || '')) entry.goles++;
+            byPosition.set(code, entry);
+          }
+
+          const items = POSITION_ORDER
+            .filter((code) => (byPosition.get(code)?.lanzamientos ?? 0) > 0)
+            .map((code) => {
+              const { lanzamientos, goles } = byPosition.get(code);
+              return {
+                code,
+                fullLabel: POSITION_LABELS[code],
+                shortLabel: POSITION_LABELS_SHORT[code],
+                lanzamientos,
+                goles,
+                efectividad: Math.round((goles / lanzamientos) * 100)
+              };
+            })
+            .sort((a, b) => b.lanzamientos - a.lanzamientos);
+
+          if (items.length === 0) { panel.hidden = true; return; }
+          panel.hidden = false;
+
+          document.getElementById('positionEfficacyChart').innerHTML = buildPositionEfficacySVG(items);
+
+          document.querySelectorAll('#positionEfficacyChart .position-bar-group').forEach((g) => {
+            g.addEventListener('click', () => togglePuestoFilter(g.dataset.code));
+          });
+        }
+
+        function togglePuestoFilter(code) {
+          const cur = activeFilters.puesto.selected;
+          activeFilters.puesto.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          renderStats();
+        }
+
+        function buildPositionEfficacySVG(items) {
+          const W = 800, H = 260;
+          const marginTop = 26, marginBottom = 34, marginLeft = 30, marginRight = 10;
+          const plotW = W - marginLeft - marginRight;
+          const plotH = H - marginTop - marginBottom;
+          const n = items.length;
+          const groupW = plotW / n;
+          const barW = Math.min(28, groupW * 0.32);
+          const gap = 2;
+          const axisMax = niceMax(Math.max(...items.map((p) => p.lanzamientos)));
+          const COLOR_LANZ = '#3b82f6';
+          const COLOR_GOL = '#d95926';
+          const TEXT_MUTED = '#898781';
+          const TEXT_SECONDARY = '#c3c2b7';
+          const GRID = '#2c2c2a';
+          const AXIS = '#383835';
+          const selectedPositions = activeFilters.puesto.selected;
+
+          let gridSvg = '';
+          for (let v = 0; v <= axisMax; v += 5) {
+            const y = marginTop + plotH - (v / axisMax) * plotH;
+            gridSvg += `<line x1="${marginLeft}" y1="${y}" x2="${W - marginRight}" y2="${y}" stroke="${v === 0 ? AXIS : GRID}" stroke-width="1" />`;
+            gridSvg += `<text x="${marginLeft - 6}" y="${y}" text-anchor="end" dominant-baseline="middle" fill="${TEXT_MUTED}" font-size="10">${v}</text>`;
+          }
+
+          let groupsSvg = '';
+          items.forEach((p, i) => {
+            const centerX = marginLeft + i * groupW + groupW / 2;
+            const groupX = marginLeft + i * groupW;
+            const lanzH = (p.lanzamientos / axisMax) * plotH;
+            const golH = (p.goles / axisMax) * plotH;
+            const lanzY = marginTop + plotH - lanzH;
+            const golY = marginTop + plotH - golH;
+            const lanzX = centerX - barW - gap / 2;
+            const golX = centerX + gap / 2;
+
+            const isSelected = selectedPositions.includes(p.code);
+            const isDimmed = selectedPositions.length > 0 && !isSelected;
+            const highlight = isSelected ? ` stroke="#fff" stroke-width="1.5"` : '';
+
+            const topY = Math.min(lanzY, golY);
+
+            // Nombre completo si cabe, si no una abreviatura, si tampoco el código.
+            const CHAR_W = 5.8;
+            const fitsFull = p.fullLabel.length * CHAR_W <= groupW - 4;
+            const fitsShort = p.shortLabel.length * CHAR_W <= groupW - 4;
+            const xLabel = fitsFull ? p.fullLabel : fitsShort ? p.shortLabel : p.code;
+
+            groupsSvg += `
+              <g class="position-bar-group" data-code="${p.code}" opacity="${isDimmed ? 0.35 : 1}">
+                <rect x="${groupX}" y="0" width="${groupW}" height="${H}" fill="transparent" />
+                <rect x="${lanzX}" y="${lanzY}" width="${barW}" height="${Math.max(0, lanzH)}" rx="4" fill="${COLOR_LANZ}"${highlight}><title>${escapeHtml(p.fullLabel)} — Lanzamientos: ${p.lanzamientos}</title></rect>
+                <rect x="${golX}" y="${golY}" width="${barW}" height="${Math.max(0, golH)}" rx="4" fill="${COLOR_GOL}"${highlight}><title>${escapeHtml(p.fullLabel)} — Goles: ${p.goles}</title></rect>
+                <text x="${centerX}" y="${Math.max(marginTop - 8, topY - 6)}" text-anchor="middle" fill="${TEXT_SECONDARY}" font-size="10" style="pointer-events:none">${p.goles}/${p.lanzamientos} (${p.efectividad}%)</text>
+                <text x="${centerX}" y="${marginTop + plotH + 15}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="10" style="pointer-events:none">${escapeHtml(xLabel)}</text>
+              </g>`;
+          });
+
+          return `<svg viewBox="0 0 ${W} ${H}" class="player-chart-svg" role="img" aria-label="Efectividad por puesto: lanzamientos y goles">
+            ${gridSvg}
+            ${groupsSvg}
+          </svg>`;
         }
 
         function buildPlayerComparisonSVG(players) {
