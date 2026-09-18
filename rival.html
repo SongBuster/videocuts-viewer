@@ -12,8 +12,31 @@
     color: #888; padding: 12px 6px; font-size: 13px; cursor: pointer;
   }
   .tab-btn.active { color: #fff; border-bottom-color: #3b82f6; }
-  .tab-panel { padding: 24px 20px; }
-  .aux-text { color: #888; font-size: 13px; }
+  .tab-panel { min-height: 0; }
+
+  /* ── Filtros (izquierda) + visualizadores (derecha) ── */
+  .dash-layout { display: flex; align-items: flex-start; }
+  .dash-filters {
+    width: 280px; flex-shrink: 0; border-right: 1px solid #2a2a2a;
+    padding: 18px 16px; display: flex; flex-direction: column; gap: 14px;
+    box-sizing: border-box;
+  }
+  .dash-filters-title { color: #aaa; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  .filters-col { display: flex; flex-direction: column; gap: 10px; }
+  .filters-col .dd-filter { display: block; }
+  .filters-col .dd-filter-btn { width: 100%; box-sizing: border-box; justify-content: space-between; }
+  .dash-main { flex: 1; min-width: 0; padding: 20px; }
+  .filters-toggle { display: none; }
+
+  @media (max-width: 860px) {
+    .dash-layout { flex-direction: column; }
+    .filters-toggle {
+      display: block; width: 100%; text-align: left; background: #1a1a1a; border: none;
+      border-bottom: 1px solid #2a2a2a; color: #ccc; padding: 12px 20px; font-size: 13px; cursor: pointer;
+    }
+    .dash-filters { width: 100%; border-right: none; border-bottom: 1px solid #2a2a2a; box-sizing: border-box; }
+    .dash-filters:not(.open) { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -31,6 +54,22 @@
 
 <script type="module">
   import { fetchJSON, escapeHtml } from './assets/app.js'
+  import { createDropdownFilter, createTreeDropdownFilter, buildTimeTree, computeTimeBucketKey } from './assets/dropdown-filter.js'
+  import { SHOT_ZONES, COURT_W, COURT_H, GOAL_INNER_ZONES, GOAL_LABELS, GOAL_LAYOUT } from './assets/zones.js'
+
+  const COL_PLAYER = 'Jugador'
+  const COL_CODE = 'Codigo'
+  const COL_POSITION = 'Posición'
+  const COL_GOAL = 'Portería'
+
+  // El CSV trae "#33 NOMBRE" — para el desplegable interesa ordenar por
+  // dorsal numérico (no como texto: "#10" iría antes que "#2") y sin el "#",
+  // que no aporta nada y ocupa espacio.
+  function parsePlayer(raw) {
+    const m = raw.match(/^#(\d+)\s*(.*)$/)
+    if (!m) return { dorsal: Infinity, label: raw }
+    return { dorsal: Number(m[1]), label: `${m[1]} ${m[2]}`.trim() }
+  }
 
   const params = new URLSearchParams(location.search)
   const team = params.get('equipo')
@@ -63,9 +102,481 @@
         panels.jugadores.innerHTML = '<div class="empty-state">Sin datos de jugadores para este rival todavía.</div>';
       } else {
         const datasets = await Promise.all(jugadoresEntries.map((e) => fetchJSON(`data/lanzamientos/${e.id}.json`)));
-        const totalRows = datasets.reduce((acc, d) => acc + d.records.length, 0);
-        const jornadas = jugadoresEntries.map((e) => e.code).join(', ');
-        panels.jugadores.innerHTML = `<p class="aux-text">${totalRows} eventos cargados (jornadas: ${escapeHtml(jornadas)}) — de prueba, mientras decidimos qué mostrar aquí.</p>`;
+        const records = datasets.flatMap((d) => d.records);
+
+        panels.jugadores.innerHTML = `
+          <button type="button" class="filters-toggle" id="filtersToggle">☰ Filtros</button>
+          <div class="dash-layout">
+            <aside class="dash-filters" id="dashFilters">
+              <div class="dash-filters-title">Filtros</div>
+              <div class="filters-col" id="filtersCol"></div>
+            </aside>
+            <main class="dash-main">
+              <div class="panel stat-headline" id="statHeadline"></div>
+              <div class="panel" id="playerComparisonPanel" hidden>
+                <div class="panel-title">Comparativa de jugadores</div>
+                <div class="chart-legend">
+                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#3b82f6"></span>Lanzamientos</span>
+                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
+                </div>
+                <div id="playerComparisonChart"></div>
+              </div>
+              <div class="zones-row">
+                <div class="panel">
+                  <div class="panel-title">Zona de lanzamiento</div>
+                  <div id="zonePositionChart"></div>
+                </div>
+                <div class="panel">
+                  <div class="panel-title">Zona de portería</div>
+                  <div id="goalZoneChart"></div>
+                </div>
+              </div>
+            </main>
+          </div>`;
+
+        document.getElementById('filtersToggle').addEventListener('click', () => {
+          document.getElementById('dashFilters').classList.toggle('open');
+        });
+
+        const filtersCol = document.getElementById('filtersCol');
+        // Cada filtro registra cómo sacar "su" valor de un registro
+        // (getValue) y qué tiene seleccionado ahora mismo — así el filtro de
+        // tiempo (un valor calculado, no una columna directa) encaja igual
+        // que los que sí son una columna tal cual.
+        const activeFilters = {} // key -> { getValue, selected }
+
+        function addFilter(key, fieldLabel, column) {
+          const values = [...new Set(records.map((r) => r[column]).filter(Boolean))].sort();
+          const filter = createDropdownFilter({
+            fieldLabel,
+            options: values.map((v) => ({ value: v, label: v })),
+            onChange: (selected) => { activeFilters[key].selected = selected; renderStats(); }
+          });
+          activeFilters[key] = { getValue: (r) => r[column], selected: [] };
+          filtersCol.appendChild(filter.el);
+        }
+
+        addFilter('partido', 'Partido', COL_CODE);
+
+        const timeFilter = createTreeDropdownFilter({
+          fieldLabel: 'Tiempo de juego',
+          groups: buildTimeTree(),
+          onChange: (selected) => { activeFilters.tiempo.selected = selected; renderStats(); }
+        });
+        activeFilters.tiempo = { getValue: (r) => computeTimeBucketKey(r), selected: [] };
+        filtersCol.appendChild(timeFilter.el);
+
+        const playerOptions = [...new Set(records.map((r) => r[COL_PLAYER]).filter(Boolean))]
+          .map((raw) => ({ value: raw, ...parsePlayer(raw) }))
+          .sort((a, b) => a.dorsal - b.dorsal)
+          .map(({ value, label }) => ({ value, label }));
+        const playerFilter = createDropdownFilter({
+          fieldLabel: 'Jugador',
+          options: playerOptions,
+          onChange: (selected) => { activeFilters.jugador.selected = selected; renderStats(); }
+        });
+        activeFilters.jugador = { getValue: (r) => r[COL_PLAYER], selected: [] };
+        filtersCol.appendChild(playerFilter.el);
+
+        // Fase de juego: sin buscador, y ordenado por nº de eventos (el más
+        // frecuente primero), no alfabético.
+        const COL_PHASE = 'Fase de juego';
+        const phaseCounts = new Map();
+        for (const r of records) {
+          const v = r[COL_PHASE];
+          if (v) phaseCounts.set(v, (phaseCounts.get(v) || 0) + 1);
+        }
+        const phaseOptions = [...phaseCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([value]) => ({ value, label: value }));
+        if (phaseOptions.length > 0) {
+          const phaseFilter = createDropdownFilter({
+            fieldLabel: 'Fase de juego',
+            options: phaseOptions,
+            showSearch: false,
+            onChange: (selected) => { activeFilters.fase.selected = selected; renderStats(); }
+          });
+          activeFilters.fase = { getValue: (r) => r[COL_PHASE], selected: [] };
+          filtersCol.appendChild(phaseFilter.el);
+        }
+
+        // Modalidad: distingue los lanzamientos de 7 metros (sin oposición
+        // real, efectividad muy distinta) de los de juego. Se llama
+        // "Modalidad" y no "Tipo de lanzamiento" para no confundirlo con el
+        // filtro de Tipo de lanzamiento (Potencia/Colocado/...) de más abajo.
+        const COL_EVENT_TYPE = 'Tipo de evento';
+        const EVENT_TYPE_LABELS = { 'Lanzamiento': 'Juego', 'Lanzamiento 7M': '7 metros' };
+        const eventTypeCounts = new Map();
+        for (const r of records) {
+          const v = r[COL_EVENT_TYPE];
+          if (v) eventTypeCounts.set(v, (eventTypeCounts.get(v) || 0) + 1);
+        }
+        const eventTypeOptions = [...eventTypeCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([value]) => ({ value, label: EVENT_TYPE_LABELS[value] || value }));
+        if (eventTypeOptions.length > 1) {
+          const eventTypeFilter = createDropdownFilter({
+            fieldLabel: 'Modalidad',
+            options: eventTypeOptions,
+            showSearch: false,
+            onChange: (selected) => { activeFilters.tipoEvento.selected = selected; renderStats(); }
+          });
+          activeFilters.tipoEvento = { getValue: (r) => r[COL_EVENT_TYPE], selected: [] };
+          filtersCol.appendChild(eventTypeFilter.el);
+        }
+
+        // Filtros simples por columna (sin buscador, ordenados por
+        // frecuencia descendente): Mano y Tipo de lanzamiento.
+        function addSimpleFilter(key, fieldLabel, column) {
+          const counts = new Map();
+          for (const r of records) {
+            const v = r[column];
+            if (v) counts.set(v, (counts.get(v) || 0) + 1);
+          }
+          const options = [...counts.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([value]) => ({ value, label: value }));
+          if (options.length <= 1) return;
+          const filter = createDropdownFilter({
+            fieldLabel,
+            options,
+            showSearch: false,
+            onChange: (selected) => { activeFilters[key].selected = selected; renderStats(); }
+          });
+          activeFilters[key] = { getValue: (r) => r[column], selected: [] };
+          filtersCol.appendChild(filter.el);
+        }
+
+        addSimpleFilter('mano', 'Mano', 'Mano');
+        addSimpleFilter('tipoLanzamiento', 'Tipo de lanzamiento', 'Tipo de lanzamiento');
+
+        // Zona de lanzamiento y zona de portería no tienen desplegable propio
+        // en la columna de filtros: se activan solo al pulsar sobre el
+        // gráfico correspondiente (ver toggleZoneFilter/toggleGoalZoneFilter).
+        activeFilters.zonaLanzamiento = { getValue: (r) => parseZoneCode(r[COL_POSITION]), selected: [] };
+        activeFilters.zonaPorteria = { getValue: (r) => GOAL_LABEL_TO_CODE[r[COL_GOAL]] || null, selected: [] };
+
+        function figure(n, label) {
+          return `<div class="figure"><span class="n">${n}</span><span class="l">${label}</span></div>`;
+        }
+
+        // Registros que cumplen todos los filtros activos EXCEPTO los
+        // indicados — así el propio gráfico que actúa como filtro (jugador,
+        // zona de lanzamiento, zona de portería) sigue mostrando todos sus
+        // elementos y se puede volver a pulsar para deseleccionar.
+        function filteredExcept(...excludeKeys) {
+          return records.filter((r) =>
+            Object.entries(activeFilters).every(([key, { getValue, selected }]) =>
+              excludeKeys.includes(key) || selected.length === 0 || selected.includes(getValue(r))
+            )
+          );
+        }
+
+        function renderStats() {
+          const filtered = filteredExcept();
+
+          const lanzamientos = filtered.length;
+          const goles = filtered.filter((r) => /gol/i.test(r['Resultado'] || '')).length;
+          const efectividad = lanzamientos > 0 ? ((goles / lanzamientos) * 100).toFixed(1) : '0.0';
+          const partidosDistintos = new Set(filtered.map((r) => r[COL_CODE])).size || 1;
+          const golesPorPartido = goles / partidosDistintos;
+          const golesPorPartidoLabel = Number.isInteger(golesPorPartido) ? golesPorPartido : golesPorPartido.toFixed(1);
+
+          document.getElementById('statHeadline').innerHTML =
+            figure(lanzamientos, 'lanzamientos') +
+            figure(goles, 'goles') +
+            figure(`${efectividad}%`, 'efectividad') +
+            figure(golesPorPartidoLabel, 'goles por partido');
+
+          renderPlayerComparison(filteredExcept('jugador'));
+          renderZonePositionChart(filteredExcept('zonaLanzamiento'));
+          renderGoalZoneChart(filteredExcept('zonaPorteria'));
+        }
+
+        // ── Comparativa de jugadores: siempre visible (actúa también como
+        // filtro clicable), salvo que no haya lanzamientos que mostrar.
+        function niceMax(value) {
+          return value <= 0 ? 5 : Math.ceil(value / 5) * 5;
+        }
+
+        function renderPlayerComparison(filtered) {
+          const panel = document.getElementById('playerComparisonPanel');
+          const byPlayer = new Map();
+          for (const r of filtered) {
+            const raw = r[COL_PLAYER];
+            if (!raw) continue;
+            const entry = byPlayer.get(raw) || { lanzamientos: 0, goles: 0 };
+            entry.lanzamientos++;
+            if (/gol/i.test(r['Resultado'] || '')) entry.goles++;
+            byPlayer.set(raw, entry);
+          }
+
+          if (byPlayer.size === 0) { panel.hidden = true; return; }
+          panel.hidden = false;
+
+          const players = [...byPlayer.entries()]
+            .map(([raw, { lanzamientos, goles }]) => {
+              const { dorsal, label } = parsePlayer(raw);
+              return {
+                raw,
+                fullLabel: label,
+                dorsalLabel: String(dorsal),
+                lanzamientos,
+                goles,
+                efectividad: lanzamientos > 0 ? Math.round((goles / lanzamientos) * 100) : 0
+              };
+            })
+            .sort((a, b) => b.lanzamientos - a.lanzamientos);
+
+          document.getElementById('playerComparisonChart').innerHTML = buildPlayerComparisonSVG(players);
+
+          document.querySelectorAll('#playerComparisonChart .player-bar-group').forEach((g) => {
+            g.addEventListener('click', () => togglePlayerFilter(g.dataset.player));
+          });
+        }
+
+        // Pulsar la barra de un jugador lo deja como único filtro de Jugador
+        // (y se refleja también en el desplegable); pulsar el mismo de nuevo
+        // vuelve a "todos" — igual que el botón SOLO de los desplegables.
+        function togglePlayerFilter(raw) {
+          const cur = activeFilters.jugador.selected;
+          const next = (cur.length === 1 && cur[0] === raw) ? [] : [raw];
+          activeFilters.jugador.selected = next;
+          playerFilter.setSelected(next);
+          renderStats();
+        }
+
+        function buildPlayerComparisonSVG(players) {
+          const W = 800, H = 300;
+          const marginTop = 26, marginBottom = 34, marginLeft = 30, marginRight = 10;
+          const plotW = W - marginLeft - marginRight;
+          const plotH = H - marginTop - marginBottom;
+          const n = players.length;
+          const groupW = plotW / n;
+          const barW = Math.min(24, groupW * 0.32);
+          const gap = 2;
+          const axisMax = niceMax(Math.max(...players.map((p) => p.lanzamientos)));
+          const COLOR_LANZ = '#3b82f6';
+          const COLOR_GOL = '#d95926';
+          const TEXT_MUTED = '#898781';
+          const TEXT_SECONDARY = '#c3c2b7';
+          const GRID = '#2c2c2a';
+          const AXIS = '#383835';
+
+          let gridSvg = '';
+          for (let v = 0; v <= axisMax; v += 5) {
+            const y = marginTop + plotH - (v / axisMax) * plotH;
+            gridSvg += `<line x1="${marginLeft}" y1="${y}" x2="${W - marginRight}" y2="${y}" stroke="${v === 0 ? AXIS : GRID}" stroke-width="1" />`;
+            gridSvg += `<text x="${marginLeft - 6}" y="${y}" text-anchor="end" dominant-baseline="middle" fill="${TEXT_MUTED}" font-size="10">${v}</text>`;
+          }
+
+          const selectedPlayers = activeFilters.jugador.selected;
+
+          let groupsSvg = '';
+          players.forEach((p, i) => {
+            const centerX = marginLeft + i * groupW + groupW / 2;
+            const groupX = marginLeft + i * groupW;
+            const lanzH = (p.lanzamientos / axisMax) * plotH;
+            const golH = (p.goles / axisMax) * plotH;
+            const lanzY = marginTop + plotH - lanzH;
+            const golY = marginTop + plotH - golH;
+            const lanzX = centerX - barW - gap / 2;
+            const golX = centerX + gap / 2;
+
+            const isSelected = selectedPlayers.includes(p.raw);
+            const isDimmed = selectedPlayers.length > 0 && !isSelected;
+            const highlight = isSelected ? ` stroke="#fff" stroke-width="1.5"` : '';
+
+            const topY = Math.min(lanzY, golY);
+            const fitsFull = p.fullLabel.length * 5.2 <= groupW - 4;
+            const xLabel = fitsFull ? p.fullLabel : p.dorsalLabel;
+
+            groupsSvg += `
+              <g class="player-bar-group" data-player="${escapeHtml(p.raw)}" opacity="${isDimmed ? 0.35 : 1}">
+                <rect x="${groupX}" y="0" width="${groupW}" height="${H}" fill="transparent" />
+                <rect x="${lanzX}" y="${lanzY}" width="${barW}" height="${Math.max(0, lanzH)}" rx="4" fill="${COLOR_LANZ}"${highlight}><title>${escapeHtml(p.fullLabel)} — Lanzamientos: ${p.lanzamientos}</title></rect>
+                <rect x="${golX}" y="${golY}" width="${barW}" height="${Math.max(0, golH)}" rx="4" fill="${COLOR_GOL}"${highlight}><title>${escapeHtml(p.fullLabel)} — Goles: ${p.goles}</title></rect>
+                <text x="${centerX}" y="${Math.max(marginTop - 8, topY - 6)}" text-anchor="middle" fill="${TEXT_SECONDARY}" font-size="10" style="pointer-events:none">${p.goles}/${p.lanzamientos} (${p.efectividad}%)</text>
+                <text x="${centerX}" y="${marginTop + plotH + 15}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="9" style="pointer-events:none">${escapeHtml(xLabel)}</text>
+              </g>`;
+          });
+
+          return `<svg viewBox="0 0 ${W} ${H}" class="player-chart-svg" role="img" aria-label="Comparativa de jugadores: lanzamientos y goles">
+            ${gridSvg}
+            ${groupsSvg}
+          </svg>`;
+        }
+
+        // ── Zona de lanzamiento: mismas 13 zonas e imagen de pista que usa
+        // VideoCuts, con un círculo por zona (área proporcional a los
+        // lanzamientos, no el radio — si no, el ojo exagera la diferencia)
+        // y la misma etiqueta "goles/lanzamientos (%)" que en la comparativa.
+        function parseZoneCode(pos) {
+          const m = (pos || '').match(/^\s*(\S+)\s*·/);
+          return m ? m[1] : null;
+        }
+
+        function zoneCentroid(points) {
+          const cx = points.reduce((s, p) => s + p.x, 0) / points.length;
+          const cy = points.reduce((s, p) => s + p.y, 0) / points.length;
+          return { cx, cy };
+        }
+
+        // Rojo (0%) → amarillo (50%) → verde (100%), mismos tonos que la
+        // paleta de estado (nunca reutilizados como color de serie normal).
+        function lerpChannel(a, b, t) { return Math.round(a + (b - a) * t); }
+        function mixColorRGB(c1, c2, t) {
+          return [lerpChannel(c1[0], c2[0], t), lerpChannel(c1[1], c2[1], t), lerpChannel(c1[2], c2[2], t)];
+        }
+        function rgbStr(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+        function efficiencyColorRGB(pct) {
+          const RED = [208, 59, 59], YELLOW = [250, 178, 25], GREEN = [12, 163, 12];
+          const t = Math.max(0, Math.min(100, pct));
+          return t <= 50 ? mixColorRGB(RED, YELLOW, t / 50) : mixColorRGB(YELLOW, GREEN, (t - 50) / 50);
+        }
+        function efficiencyColor(pct) { return rgbStr(efficiencyColorRGB(pct)); }
+        // Sobre amarillo (claro) el texto blanco no contrasta lo suficiente;
+        // se elige blanco o tinta oscura según la luminancia del propio relleno.
+        function textColorOn(rgb) {
+          const luminance = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+          return luminance > 150 ? '#1a1a1a' : '#fff';
+        }
+
+        function renderZonePositionChart(filtered) {
+          const byZone = new Map();
+          for (const r of filtered) {
+            const code = parseZoneCode(r[COL_POSITION]);
+            if (!code) continue;
+            const entry = byZone.get(code) || { lanzamientos: 0, goles: 0 };
+            entry.lanzamientos++;
+            if (/gol/i.test(r['Resultado'] || '')) entry.goles++;
+            byZone.set(code, entry);
+          }
+
+          const maxCount = Math.max(1, ...[...byZone.values()].map((z) => z.lanzamientos));
+          const MIN_R = 10, MAX_R = 46;
+          const selectedZones = activeFilters.zonaLanzamiento.selected;
+
+          const bubblesSvg = SHOT_ZONES.map((z) => {
+            const data = byZone.get(z.code);
+            if (!data || data.lanzamientos === 0) return '';
+            const { cx, cy } = zoneCentroid(z.points);
+            // Área ∝ lanzamientos: radio ∝ raíz cuadrada.
+            const r = MIN_R + (MAX_R - MIN_R) * Math.sqrt(data.lanzamientos / maxCount);
+            const efectividad = Math.round((data.goles / data.lanzamientos) * 100);
+            const color = efficiencyColor(efectividad);
+            const labelBelow = cy + r + 20 <= COURT_H;
+            const labelY = labelBelow ? cy + r + 14 : cy - r - 8;
+            const isSelected = selectedZones.includes(z.code);
+            const isDimmed = selectedZones.length > 0 && !isSelected;
+            const strokeColor = isSelected ? '#ffffff' : color;
+            const strokeWidth = isSelected ? 3 : 1.5;
+            return `
+              <g class="zone-bubble-clickable" data-code="${z.code}" opacity="${isDimmed ? 0.35 : 1}">
+                <circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" fill-opacity="0.8" stroke="${strokeColor}" stroke-width="${strokeWidth}">
+                  <title>${escapeHtml(z.name)} — ${data.goles}/${data.lanzamientos} (${efectividad}%)</title>
+                </circle>
+                <text x="${cx}" y="${labelY}" text-anchor="middle" fill="#e0e0e0" font-size="12" font-weight="600" style="pointer-events:none">${data.goles}/${data.lanzamientos} (${efectividad}%)</text>
+              </g>`;
+          }).join('');
+
+          document.getElementById('zonePositionChart').innerHTML = `
+            <svg viewBox="0 0 ${COURT_W} ${COURT_H}" class="zone-bubble-svg" role="img" aria-label="Zona de lanzamiento: lanzamientos y goles por zona">
+              <image href="assets/half-court.png" x="0" y="0" width="${COURT_W}" height="${COURT_H}" />
+              ${bubblesSvg}
+            </svg>`;
+
+          document.querySelectorAll('#zonePositionChart .zone-bubble-clickable').forEach((g) => {
+            g.addEventListener('click', () => toggleZoneFilter(g.dataset.code));
+          });
+        }
+
+        function toggleZoneFilter(code) {
+          const cur = activeFilters.zonaLanzamiento.selected;
+          activeFilters.zonaLanzamiento.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          renderStats();
+        }
+
+        // ── Zona de portería: rejilla 3x3 + franjas de "fuera", misma
+        // geometría que GoalZonePicker.tsx. Aquí sí se colorea la propia
+        // zona (no un círculo, la rejilla ya está a tamaño fijo) con el
+        // mismo degradado rojo→amarillo→verde por efectividad y la misma
+        // etiqueta "goles/lanzamientos (%)".
+        const GOAL_LABEL_TO_CODE = Object.fromEntries(Object.entries(GOAL_LABELS).map(([code, label]) => [label, code]));
+
+        function renderGoalZoneChart(filtered) {
+          const byZone = new Map();
+          for (const r of filtered) {
+            const code = GOAL_LABEL_TO_CODE[r[COL_GOAL]];
+            if (!code) continue;
+            const entry = byZone.get(code) || { lanzamientos: 0, goles: 0 };
+            entry.lanzamientos++;
+            if (/gol/i.test(r['Resultado'] || '')) entry.goles++;
+            byZone.set(code, entry);
+          }
+
+          const { cols, cellW, cellH, post, outSide, outTop } = GOAL_LAYOUT;
+          const gridW = cols * cellW;
+          const gridH = 3 * cellH;
+          const gridX = outSide + post;
+          const gridY = outTop + post;
+          const width = gridW + post * 2 + outSide * 2;
+          const height = gridH + post * 2 + outTop;
+          const selectedZones = activeFilters.zonaPorteria.selected;
+
+          function cellSvg(code, x, y, w, h) {
+            const data = byZone.get(code);
+            if (!data || data.lanzamientos === 0) {
+              return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#1c1c1c" stroke="#333" stroke-width="1" />`;
+            }
+            const efectividad = Math.round((data.goles / data.lanzamientos) * 100);
+            const rgb = efficiencyColorRGB(efectividad);
+            const fill = rgbStr(rgb);
+            const textColor = textColorOn(rgb);
+            const cx = x + w / 2, cy = y + h / 2;
+            const isSelected = selectedZones.includes(code);
+            const isDimmed = selectedZones.length > 0 && !isSelected;
+            const strokeColor = isSelected ? '#ffffff' : fill;
+            const strokeWidth = isSelected ? 3 : 1;
+            return `
+              <g class="goal-cell-clickable" data-code="${code}" opacity="${isDimmed ? 0.35 : 1}">
+                <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="${strokeColor}" stroke-width="${strokeWidth}">
+                  <title>${escapeHtml(GOAL_LABELS[code])} — ${data.goles}/${data.lanzamientos} (${efectividad}%)</title>
+                </rect>
+                <text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700" style="pointer-events:none">${data.goles}/${data.lanzamientos}</text>
+                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10" style="pointer-events:none">(${efectividad}%)</text>
+              </g>`;
+          }
+
+          const inner = GOAL_INNER_ZONES.map((code, i) => {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            return cellSvg(code, gridX + col * cellW, gridY + row * cellH, cellW, cellH);
+          }).join('');
+
+          const outer = cellSvg('out-top', gridX, 0, gridW, outTop) +
+            cellSvg('out-left', 0, gridY, outSide, gridH) +
+            cellSvg('out-right', gridX + gridW, gridY, outSide, gridH);
+
+          document.getElementById('goalZoneChart').innerHTML = `
+            <svg viewBox="0 0 ${width} ${height}" class="goal-zone-svg" role="img" aria-label="Zona de portería: lanzamientos y goles por zona">
+              ${outer}
+              <rect x="${gridX - post / 2}" y="${gridY - post / 2}" width="${gridW + post}" height="${gridH + post}" fill="none" stroke="#666" stroke-width="${post}" />
+              ${inner}
+            </svg>`;
+
+          document.querySelectorAll('#goalZoneChart .goal-cell-clickable').forEach((g) => {
+            g.addEventListener('click', () => toggleGoalZoneFilter(g.dataset.code));
+          });
+        }
+
+        function toggleGoalZoneFilter(code) {
+          const cur = activeFilters.zonaPorteria.selected;
+          activeFilters.zonaPorteria.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          renderStats();
+        }
+
+        renderStats();
       }
 
       // Portero: de momento, deliberadamente sin contenido.
