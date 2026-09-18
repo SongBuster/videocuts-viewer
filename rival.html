@@ -115,6 +115,7 @@
   const COL_CLIP_START = 'Inicio del corte (segundos)'
   const COL_CLIP_END = 'Fin del corte (segundos)'
   const COL_GK_POSITION = 'Posición portero'
+  const COL_GK_STANCE = 'Postura portero'
 
   // Mismos códigos y orden que en VideoCuts (shared/types.ts): de un extremo
   // al otro de la pista, con portero y pivote en medio. No incluye DF
@@ -1319,6 +1320,36 @@
 
         addGkSimpleFilter('posicionPortero', 'Posición portero', COL_GK_POSITION);
         addGkSimpleFilter('tipoLanzamiento', 'Tipo de lanzamiento', 'Tipo de lanzamiento');
+        addGkSimpleFilter('posturaPortero', 'Postura portero', COL_GK_STANCE);
+
+        // Modalidad: en el CSV de portero no hay una columna "Tipo de
+        // evento" como en Jugadores — se deriva combinando los booleanos
+        // "Lanzamiento 7M" y "Contraataque" (como mucho uno de los dos
+        // estará marcado a la vez; si ninguno lo está, es de juego normal).
+        function gkModality(r) {
+          if (r['Lanzamiento 7M']) return '7 metros';
+          if (r['Contraataque']) return 'Contraataques';
+          return 'Juego';
+        }
+        const gkModalityCounts = new Map();
+        for (const r of gkRecords) {
+          const v = gkModality(r);
+          gkModalityCounts.set(v, (gkModalityCounts.get(v) || 0) + 1);
+        }
+        const gkModalityOptions = [...gkModalityCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([value]) => ({ value, label: value }));
+        if (gkModalityOptions.length > 1) {
+          const gkModalityFilter = createDropdownFilter({
+            fieldLabel: 'Modalidad',
+            options: gkModalityOptions,
+            showSearch: false,
+            onChange: (selected) => { gkActiveFilters.modalidad.selected = selected; renderGkStats(); }
+          });
+          gkActiveFilters.modalidad = { getValue: gkModality, selected: [] };
+          gkFilterComponents.modalidad = gkModalityFilter;
+          filtersColGk.appendChild(gkModalityFilter.el);
+        }
 
         // Zona de lanzamiento y zona de portería, igual que en Jugadores,
         // se activan solo al pulsar sobre su gráfico, sin desplegable propio.
