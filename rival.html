@@ -223,6 +223,7 @@
                 <div id="videoModalPlayer"></div>
               </div>
               <div class="video-modal-info" id="videoModalInfo"></div>
+              <div class="video-modal-resize" id="videoModalResize" title="Arrastra para cambiar el tamaño"></div>
             </div>
           </div>`;
 
@@ -852,11 +853,42 @@
         const videoModalNext = document.getElementById('videoModalNext');
         const videoModalReplay = document.getElementById('videoModalReplay');
         const videoModalAutoAdvance = document.getElementById('videoModalAutoAdvance');
+        const videoModal = document.querySelector('.video-modal');
+        const videoModalResize = document.getElementById('videoModalResize');
         document.getElementById('videoModalClose').addEventListener('click', closeVideoModal);
         videoModalOverlay.addEventListener('click', (e) => { if (e.target === videoModalOverlay) closeVideoModal(); });
         videoModalPrev.addEventListener('click', () => goToVideo(-1));
         videoModalNext.addEventListener('click', () => goToVideo(1));
         videoModalReplay.addEventListener('click', replayVideo);
+
+        // Tamaño del modal de vídeo: se puede arrastrar desde el borde
+        // derecho (el alto lo pone solo el aspect-ratio del vídeo) y se
+        // recuerda entre visitas.
+        try {
+          const savedWidth = localStorage.getItem('vv_videoModalWidth');
+          if (savedWidth) { videoModal.style.maxWidth = 'none'; videoModal.style.width = `${savedWidth}px`; }
+        } catch {}
+
+        videoModalResize.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          videoModalResize.setPointerCapture(e.pointerId);
+          const startX = e.clientX;
+          const startWidth = videoModal.getBoundingClientRect().width;
+          videoModal.style.maxWidth = 'none';
+
+          function onMove(ev) {
+            const maxW = Math.min(window.innerWidth * 0.96, 1400);
+            const newWidth = Math.min(maxW, Math.max(320, startWidth + (ev.clientX - startX)));
+            videoModal.style.width = `${newWidth}px`;
+          }
+          function onUp() {
+            document.removeEventListener('pointermove', onMove);
+            document.removeEventListener('pointerup', onUp);
+            try { localStorage.setItem('vv_videoModalWidth', String(Math.round(videoModal.getBoundingClientRect().width))); } catch {}
+          }
+          document.addEventListener('pointermove', onMove);
+          document.addEventListener('pointerup', onUp);
+        });
 
         // Navegación dentro del modal: la lista de "vídeos disponibles" es la
         // de la tabla de detalle, en el orden en que se está viendo ahora
