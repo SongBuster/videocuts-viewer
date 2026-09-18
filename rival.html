@@ -192,6 +192,7 @@
               <div class="video-modal-frame">
                 <iframe id="videoModalIframe" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
               </div>
+              <div class="video-modal-info" id="videoModalInfo"></div>
             </div>
           </div>`;
 
@@ -808,13 +809,36 @@
           videoModalIframe.src = ''; // corta la reproducción al cerrar
         }
 
-        function openVideoModal(youtubeId, start, end) {
-          const startSec = Math.max(0, Math.floor(Number(start) || 0));
-          const endSec = Math.floor(Number(end));
+        function openVideoModal(record) {
+          const youtubeId = record[COL_YOUTUBE];
+          const startSec = Math.max(0, Math.floor(Number(record[COL_CLIP_START]) || 0));
+          const endSec = Math.floor(Number(record[COL_CLIP_END]));
           const embedParams = new URLSearchParams({ start: String(startSec), autoplay: '1', rel: '0' });
           if (Number.isFinite(endSec) && endSec > startSec) embedParams.set('end', String(endSec));
           videoModalIframe.src = `https://www.youtube.com/embed/${youtubeId}?${embedParams.toString()}`;
           videoModalOpenExt.href = `https://www.youtube.com/watch?v=${youtubeId}&t=${startSec}s`;
+
+          const resultado = record['Resultado'] || '';
+          const resultClass = /gol/i.test(resultado) ? 'is-gol' : /parada/i.test(resultado) ? 'is-parada' : '';
+          const playerLabel = record[COL_PLAYER] ? parsePlayer(record[COL_PLAYER]).label : '';
+          const infoItems = [
+            { label: 'Partido', value: record[COL_CODE] },
+            { label: 'Parte', value: record['Parte'] },
+            { label: 'Tiempo', value: record['Tiempo de partido'] },
+            { label: 'Jugador', value: playerLabel },
+            hasPuesto ? { label: 'Puesto', value: record[COL_PUESTO] } : null,
+            { label: 'Tipo', value: record['Tipo de lanzamiento'] },
+            { label: 'Mano', value: record['Mano'] },
+            { label: 'Fase de juego', value: record['Fase de juego'] },
+            { label: 'Resultado', value: resultado, cls: resultClass }
+          ].filter((item) => item && item.value);
+
+          document.getElementById('videoModalInfo').innerHTML = infoItems.map(({ label, value, cls }) => `
+            <div class="video-modal-info-item">
+              <span class="l">${escapeHtml(label)}</span>
+              <span class="v${cls ? ' ' + cls : ''}">${escapeHtml(value)}</span>
+            </div>`).join('');
+
           videoModalOverlay.hidden = false;
         }
 
@@ -838,13 +862,12 @@
               <th>Tipo</th><th>Mano</th><th>Resultado</th><th>Vídeo</th>
             </tr></thead>`;
 
-          const body = rows.map((r) => {
+          const body = rows.map((r, i) => {
             const playerLabel = r[COL_PLAYER] ? parsePlayer(r[COL_PLAYER]).label : '';
             const resultado = r['Resultado'] || '';
             const resultClass = /gol/i.test(resultado) ? 'is-gol' : /parada/i.test(resultado) ? 'is-parada' : '';
-            const youtubeId = r[COL_YOUTUBE];
-            const videoCell = youtubeId
-              ? `<button type="button" class="video-link" data-youtube="${escapeHtml(youtubeId)}" data-start="${escapeHtml(r[COL_CLIP_START] ?? '')}" data-end="${escapeHtml(r[COL_CLIP_END] ?? '')}">▶ Ver</button>`
+            const videoCell = r[COL_YOUTUBE]
+              ? `<button type="button" class="video-link" data-row-idx="${i}">▶ Ver</button>`
               : '<span class="detail-table-empty">—</span>';
             return `<tr>
               <td>${escapeHtml(r[COL_CODE] || '')}</td>
@@ -862,7 +885,7 @@
           document.getElementById('detailTable').innerHTML = head + `<tbody>${body}</tbody>`;
 
           document.querySelectorAll('#detailTable .video-link').forEach((btn) => {
-            btn.addEventListener('click', () => openVideoModal(btn.dataset.youtube, btn.dataset.start, btn.dataset.end));
+            btn.addEventListener('click', () => openVideoModal(rows[Number(btn.dataset.rowIdx)]));
           });
         }
 
