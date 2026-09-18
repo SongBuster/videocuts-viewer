@@ -215,6 +215,10 @@
                 <a id="videoModalOpenExt" href="#" target="_blank" rel="noopener" class="video-modal-openext">Abrir en YouTube ↗</a>
                 <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
               </div>
+              <label class="video-modal-autoadvance">
+                <input type="checkbox" id="videoModalAutoAdvance" checked />
+                Pasar automáticamente al siguiente vídeo al terminar
+              </label>
               <div class="video-modal-frame">
                 <div id="videoModalPlayer"></div>
               </div>
@@ -847,6 +851,7 @@
         const videoModalPrev = document.getElementById('videoModalPrev');
         const videoModalNext = document.getElementById('videoModalNext');
         const videoModalReplay = document.getElementById('videoModalReplay');
+        const videoModalAutoAdvance = document.getElementById('videoModalAutoAdvance');
         document.getElementById('videoModalClose').addEventListener('click', closeVideoModal);
         videoModalOverlay.addEventListener('click', (e) => { if (e.target === videoModalOverlay) closeVideoModal(); });
         videoModalPrev.addEventListener('click', () => goToVideo(-1));
@@ -914,7 +919,7 @@
                 videoId: youtubeId,
                 playerVars: vars,
                 events: {
-                  onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) goToVideo(1); },
+                  onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED && videoModalAutoAdvance.checked) goToVideo(1); },
                   onError: () => { fallbackMode = true; renderFallbackIframe({ youtubeId, startSec, endSec }); }
                 }
               });
