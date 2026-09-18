@@ -818,26 +818,23 @@
           videoModalIframe.src = `https://www.youtube.com/embed/${youtubeId}?${embedParams.toString()}`;
           videoModalOpenExt.href = `https://www.youtube.com/watch?v=${youtubeId}&t=${startSec}s`;
 
+          // Dos líneas en forma de frase, sin nombres de campo: la primera
+          // sitúa la jugada (partido/parte/tiempo/puesto), la segunda cuenta
+          // qué pasó (jugador — mano, tipo — resultado, con color).
           const resultado = record['Resultado'] || '';
           const resultClass = /gol/i.test(resultado) ? 'is-gol' : /parada/i.test(resultado) ? 'is-parada' : '';
           const playerLabel = record[COL_PLAYER] ? parsePlayer(record[COL_PLAYER]).label : '';
-          const infoItems = [
-            { label: 'Partido', value: record[COL_CODE] },
-            { label: 'Parte', value: record['Parte'] },
-            { label: 'Tiempo', value: record['Tiempo de partido'] },
-            { label: 'Jugador', value: playerLabel },
-            hasPuesto ? { label: 'Puesto', value: record[COL_PUESTO] } : null,
-            { label: 'Tipo', value: record['Tipo de lanzamiento'] },
-            { label: 'Mano', value: record['Mano'] },
-            { label: 'Fase de juego', value: record['Fase de juego'] },
-            { label: 'Resultado', value: resultado, cls: resultClass }
-          ].filter((item) => item && item.value);
 
-          document.getElementById('videoModalInfo').innerHTML = infoItems.map(({ label, value, cls }) => `
-            <div class="video-modal-info-item">
-              <span class="l">${escapeHtml(label)}</span>
-              <span class="v${cls ? ' ' + cls : ''}">${escapeHtml(value)}</span>
-            </div>`).join('');
+          const line1 = [record[COL_CODE], record['Parte'], record['Tiempo de partido'], hasPuesto ? record[COL_PUESTO] : null]
+            .filter(Boolean).map(escapeHtml).join(' · ');
+
+          const manoTipo = [record['Mano'], record['Tipo de lanzamiento']].filter(Boolean).join(', ');
+          const line2 = [playerLabel, manoTipo].filter(Boolean).map(escapeHtml).join(' — ') +
+            (resultado ? ` — <span class="${resultClass}">${escapeHtml(resultado)}</span>` : '');
+
+          document.getElementById('videoModalInfo').innerHTML = `
+            <div class="video-modal-info-line video-modal-info-context">${line1}</div>
+            <div class="video-modal-info-line">${line2}</div>`;
 
           videoModalOverlay.hidden = false;
         }
