@@ -29,7 +29,12 @@
   .filters-toggle { display: none; }
 
   @media (max-width: 860px) {
-    .dash-layout { flex-direction: column; }
+    /* align-items:flex-start (para el modo fila, en escritorio) pasa a
+       controlar el ancho de las columnas al volverse el eje transversal en
+       modo columna — sin stretch, cada panel se encoge a su contenido y lo
+       que no quepa (p.ej. la tabla de detalle) se escapa de la página en
+       vez de scrollear dentro de su propio contenedor. */
+    .dash-layout { flex-direction: column; align-items: stretch; }
     .filters-toggle {
       display: block; width: 100%; text-align: left; background: #1a1a1a; border: none;
       border-bottom: 1px solid #2a2a2a; color: #ccc; padding: 12px 20px; font-size: 13px; cursor: pointer;
@@ -62,6 +67,9 @@
   const COL_POSITION = 'Posición'
   const COL_GOAL = 'Portería'
   const COL_PUESTO = 'Puesto'
+  const COL_YOUTUBE = 'ID de YouTube del vídeo'
+  const COL_CLIP_START = 'Inicio del corte (segundos)'
+  const COL_CLIP_END = 'Fin del corte (segundos)'
 
   // Mismos códigos y orden que en VideoCuts (shared/types.ts): de un extremo
   // al otro de la pista, con portero y pivote en medio. No incluye DF
@@ -167,7 +175,24 @@
                   <div id="goalZoneChart"></div>
                 </div>
               </div>
+              <div class="panel" id="detailTablePanel" hidden>
+                <div class="panel-title">Detalle de lanzamientos</div>
+                <div class="detail-table-wrap">
+                  <table class="detail-table" id="detailTable"></table>
+                </div>
+              </div>
             </main>
+          </div>
+          <div class="video-modal-overlay" id="videoModalOverlay" hidden>
+            <div class="video-modal">
+              <div class="video-modal-bar">
+                <a id="videoModalOpenExt" href="#" target="_blank" rel="noopener" class="video-modal-openext">Abrir en YouTube ↗</a>
+                <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
+              </div>
+              <div class="video-modal-frame">
+                <iframe id="videoModalIframe" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+              </div>
+            </div>
           </div>`;
 
         document.getElementById('filtersToggle').addEventListener('click', () => {
@@ -371,6 +396,7 @@
           renderZonePositionChart(filteredExcept('zonaLanzamiento'));
           renderGoalZoneChart(filteredExcept('zonaPorteria'));
           if (hasPuesto) renderPositionEfficacyChart(filteredExcept('puesto'));
+          renderDetailTable(filtered);
         }
 
         // ── Comparativa de jugadores: siempre visible (actúa también como
@@ -765,6 +791,79 @@
           const cur = activeFilters.zonaPorteria.selected;
           activeFilters.zonaPorteria.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
           renderStats();
+        }
+
+        // ── Detalle de lanzamientos: tabla final con cada evento que cumple
+        // los filtros activos, con enlace al vídeo exacto de ese corte (se
+        // abre en un mini-reproductor embebido, con opción de abrirlo en
+        // YouTube en una pestaña nueva).
+        const videoModalOverlay = document.getElementById('videoModalOverlay');
+        const videoModalIframe = document.getElementById('videoModalIframe');
+        const videoModalOpenExt = document.getElementById('videoModalOpenExt');
+        document.getElementById('videoModalClose').addEventListener('click', closeVideoModal);
+        videoModalOverlay.addEventListener('click', (e) => { if (e.target === videoModalOverlay) closeVideoModal(); });
+
+        function closeVideoModal() {
+          videoModalOverlay.hidden = true;
+          videoModalIframe.src = ''; // corta la reproducción al cerrar
+        }
+
+        function openVideoModal(youtubeId, start, end) {
+          const startSec = Math.max(0, Math.floor(Number(start) || 0));
+          const endSec = Math.floor(Number(end));
+          const embedParams = new URLSearchParams({ start: String(startSec), autoplay: '1', rel: '0' });
+          if (Number.isFinite(endSec) && endSec > startSec) embedParams.set('end', String(endSec));
+          videoModalIframe.src = `https://www.youtube.com/embed/${youtubeId}?${embedParams.toString()}`;
+          videoModalOpenExt.href = `https://www.youtube.com/watch?v=${youtubeId}&t=${startSec}s`;
+          videoModalOverlay.hidden = false;
+        }
+
+        function renderDetailTable(filtered) {
+          const panel = document.getElementById('detailTablePanel');
+          if (filtered.length === 0) { panel.hidden = true; return; }
+          panel.hidden = false;
+
+          const rows = [...filtered].sort((a, b) => {
+            const codeA = a[COL_CODE] || '', codeB = b[COL_CODE] || '';
+            if (codeA !== codeB) return codeA < codeB ? -1 : 1;
+            const partA = a['Parte'] || '', partB = b['Parte'] || '';
+            if (partA !== partB) return partA < partB ? -1 : 1;
+            return (a['Tiempo de partido'] || '').localeCompare(b['Tiempo de partido'] || '');
+          });
+
+          const head = `
+            <thead><tr>
+              <th>Partido</th><th>Parte</th><th>Tiempo</th><th>Jugador</th>
+              ${hasPuesto ? '<th>Puesto</th>' : ''}
+              <th>Tipo</th><th>Mano</th><th>Resultado</th><th>Vídeo</th>
+            </tr></thead>`;
+
+          const body = rows.map((r) => {
+            const playerLabel = r[COL_PLAYER] ? parsePlayer(r[COL_PLAYER]).label : '';
+            const resultado = r['Resultado'] || '';
+            const resultClass = /gol/i.test(resultado) ? 'is-gol' : /parada/i.test(resultado) ? 'is-parada' : '';
+            const youtubeId = r[COL_YOUTUBE];
+            const videoCell = youtubeId
+              ? `<button type="button" class="video-link" data-youtube="${escapeHtml(youtubeId)}" data-start="${escapeHtml(r[COL_CLIP_START] ?? '')}" data-end="${escapeHtml(r[COL_CLIP_END] ?? '')}">▶ Ver</button>`
+              : '<span class="detail-table-empty">—</span>';
+            return `<tr>
+              <td>${escapeHtml(r[COL_CODE] || '')}</td>
+              <td>${escapeHtml(r['Parte'] || '')}</td>
+              <td>${escapeHtml(r['Tiempo de partido'] || '')}</td>
+              <td>${escapeHtml(playerLabel)}</td>
+              ${hasPuesto ? `<td>${escapeHtml(r[COL_PUESTO] || '')}</td>` : ''}
+              <td>${escapeHtml(r['Tipo de lanzamiento'] || '')}</td>
+              <td>${escapeHtml(r['Mano'] || '')}</td>
+              <td class="${resultClass}">${escapeHtml(resultado)}</td>
+              <td>${videoCell}</td>
+            </tr>`;
+          }).join('');
+
+          document.getElementById('detailTable').innerHTML = head + `<tbody>${body}</tbody>`;
+
+          document.querySelectorAll('#detailTable .video-link').forEach((btn) => {
+            btn.addEventListener('click', () => openVideoModal(btn.dataset.youtube, btn.dataset.start, btn.dataset.end));
+          });
         }
 
         renderStats();

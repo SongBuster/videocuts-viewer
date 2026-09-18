@@ -189,3 +189,37 @@ button { font-family: inherit; }
 
 /* ── Gráficos interactivos: pulsar un elemento filtra el resto de la página ── */
 .player-bar-group, .zone-bubble-clickable, .goal-cell-clickable, .position-bar-group { cursor: pointer; }
+
+/* ── Tabla de detalle de lanzamientos ── */
+.detail-table-wrap { max-height: 480px; overflow: auto; }
+.detail-table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.detail-table th {
+  position: sticky; top: 0; background: #1a1a1a; text-align: left; color: #888;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .03em; padding: 8px 10px;
+  border-bottom: 1px solid #2a2a2a;
+}
+.detail-table td { padding: 7px 10px; border-bottom: 1px solid #222; color: #ccc; }
+.detail-table tbody tr:hover { background: #1e1e1e; }
+.detail-table td.is-gol { color: #0ca30c; font-weight: 600; }
+.detail-table td.is-parada { color: #898781; }
+.detail-table-empty { color: #555; }
+.video-link {
+  background: #16223a; border: 1px solid #2a3a52; color: #9ab8f0; border-radius: 5px;
+  padding: 3px 10px; font-size: 11px; cursor: pointer; white-space: nowrap;
+}
+.video-link:hover { background: #1c2c4a; }
+
+/* ── Modal del reproductor de vídeo ── */
+.video-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 100;
+  display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;
+}
+.video-modal-overlay[hidden] { display: none; }
+.video-modal { width: 100%; max-width: 900px; background: #111; border-radius: 10px; overflow: hidden; }
+.video-modal-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #1a1a1a; }
+.video-modal-openext { color: #9ab8f0; font-size: 12px; text-decoration: none; }
+.video-modal-openext:hover { text-decoration: underline; }
+.video-modal-close { background: none; border: none; color: #888; font-size: 16px; cursor: pointer; padding: 4px 8px; line-height: 1; }
+.video-modal-close:hover { color: #fff; }
+.video-modal-frame { position: relative; aspect-ratio: 16 / 9; background: #000; }
+.video-modal-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
