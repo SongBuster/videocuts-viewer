@@ -405,7 +405,11 @@
     // sitúa la jugada (partido/parte/tiempo/puesto), la segunda cuenta
     // qué pasó (jugador — mano, tipo — resultado, con color).
     const resultado = record['Resultado'] || '';
-    const isPortero = record[COL_PUESTO] === 'Portero';
+    // No todos los CSV de portero llevan la columna "Puesto" (depende de
+    // qué columnas fijas se marcaran al configurar la exportación en
+    // VideoCuts) — "Posición portero" sí es propia de cualquier exportación
+    // de portero, así que es la señal fiable de que este registro es suyo.
+    const isPortero = record[COL_PUESTO] === 'Portero' || Boolean(record[COL_GK_POSITION]);
     const resultClass = isPortero
       ? (/parada/i.test(resultado) ? 'is-good' : /gol/i.test(resultado) ? 'is-bad' : '')
       : (/gol/i.test(resultado) ? 'is-gol' : /parada/i.test(resultado) ? 'is-parada' : '');
@@ -1056,13 +1060,27 @@
             const isDimmed = selectedZones.length > 0 && !isSelected;
             const strokeColor = isSelected ? '#ffffff' : fill;
             const strokeWidth = isSelected ? 3 : 1;
+            const line1 = `${data.goles}/${data.lanzamientos}`;
+            const line2 = `(${efectividad}%)`;
+            // Las franjas de "fuera" (arriba/izquierda/derecha) son muy
+            // finas — un lanzamiento que acaba ahí sí puede tener datos que
+            // mostrar, pero las dos líneas de texto a tamaño normal no
+            // caben: la de arriba es baja pero ancha (una sola línea más
+            // compacta cabe de sobra), las de los lados son estrechas pero
+            // altas (caben las dos líneas de siempre, pero más pequeñas).
+            const textSvg = h < 32
+              ? `<text x="${cx}" y="${cy + 3}" text-anchor="middle" fill="${textColor}" font-size="9" font-weight="700" style="pointer-events:none">${line1} ${line2}</text>`
+              : w < 32
+              ? `<text x="${cx}" y="${cy - 2}" text-anchor="middle" fill="${textColor}" font-size="9" font-weight="700" style="pointer-events:none">${line1}</text>
+                <text x="${cx}" y="${cy + 9}" text-anchor="middle" fill="${textColor}" font-size="8" style="pointer-events:none">${line2}</text>`
+              : `<text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700" style="pointer-events:none">${line1}</text>
+                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10" style="pointer-events:none">${line2}</text>`;
             return `
               <g class="goal-cell-clickable" data-code="${code}" opacity="${isDimmed ? 0.35 : 1}">
                 <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="${strokeColor}" stroke-width="${strokeWidth}">
-                  <title>${escapeHtml(GOAL_LABELS[code])} — ${data.goles}/${data.lanzamientos} (${efectividad}%)</title>
+                  <title>${escapeHtml(GOAL_LABELS[code])} — ${line1} ${line2}</title>
                 </rect>
-                <text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700" style="pointer-events:none">${data.goles}/${data.lanzamientos}</text>
-                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10" style="pointer-events:none">(${efectividad}%)</text>
+                ${textSvg}
               </g>`;
           }
 
@@ -1334,9 +1352,13 @@
         // evento" como en Jugadores — se deriva combinando los booleanos
         // "Lanzamiento 7M" y "Contraataque" (como mucho uno de los dos
         // estará marcado a la vez; si ninguno lo está, es de juego normal).
+        // Ojo: "Contraataque" no siempre es "Sí"/"" — algún CSV trae "No"
+        // explícito, que igualmente cuenta como "no es contraataque" (si se
+        // comprobara con un simple if(valor) un "No" no vacío colaría como
+        // verdadero).
         function gkModality(r) {
-          if (r['Lanzamiento 7M']) return '7 metros';
-          if (r['Contraataque']) return 'Contraataques';
+          if (r['Lanzamiento 7M'] === 'Sí') return '7 metros';
+          if (r['Contraataque'] === 'Sí') return 'Contraataques';
           return 'Juego';
         }
         const gkModalityCounts = new Map();
@@ -1614,13 +1636,27 @@
             const strokeWidth = isSelected ? 3 : 1;
             const line1 = pct === null ? `${data.total}` : `${data.paradas}/${data.paradas + data.goles}`;
             const line2 = pct === null ? '(fuera)' : `(${pct}%)`;
+            const rectSvg = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="${strokeColor}" stroke-width="${strokeWidth}">
+                  <title>${escapeHtml(GOAL_LABELS[code])} — ${line1} paradas ${line2}</title>
+                </rect>`;
+            // Las franjas de "fuera" (arriba/izquierda/derecha) son muy
+            // finas — un lanzamiento que acaba ahí sí puede tener datos que
+            // mostrar (p.ej. "Fuera arriba"), pero las dos líneas de texto a
+            // tamaño normal no caben: la de arriba es baja pero ancha (una
+            // sola línea más compacta cabe de sobra), las de los lados son
+            // estrechas pero altas (caben las dos líneas de siempre, pero
+            // más pequeñas).
+            const textSvg = h < 32
+              ? `<text x="${cx}" y="${cy + 3}" text-anchor="middle" fill="${textColor}" font-size="9" font-weight="700" style="pointer-events:none">${line1} ${line2}</text>`
+              : w < 32
+              ? `<text x="${cx}" y="${cy - 2}" text-anchor="middle" fill="${textColor}" font-size="9" font-weight="700" style="pointer-events:none">${line1}</text>
+                <text x="${cx}" y="${cy + 9}" text-anchor="middle" fill="${textColor}" font-size="7.5" style="pointer-events:none">${line2.replace(/[()]/g, '')}</text>`
+              : `<text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700" style="pointer-events:none">${line1}</text>
+                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10" style="pointer-events:none">${line2}</text>`;
             return `
               <g class="goal-cell-clickable" data-code="${code}" opacity="${isDimmed ? 0.35 : 1}">
-                <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="${strokeColor}" stroke-width="${strokeWidth}">
-                  <title>${escapeHtml(GOAL_LABELS[code])} — ${line1} paradas ${line2}</title>
-                </rect>
-                <text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700" style="pointer-events:none">${line1}</text>
-                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10" style="pointer-events:none">${line2}</text>
+                ${rectSvg}
+                ${textSvg}
               </g>`;
           }
 
