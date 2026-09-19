@@ -36,7 +36,18 @@
   .filters-col .dd-filter { display: block; }
   .filters-col .dd-filter-btn { width: 100%; box-sizing: border-box; justify-content: space-between; }
   .dash-main { flex: 1; min-width: 0; padding: 20px; }
-  .filters-toggle { display: none; }
+
+  /* El botón para mostrar/ocultar filtros vale para cualquier tamaño de
+     pantalla (antes solo existía en móvil) — en escritorio/tablet permite
+     ganar ancho para las gráficas; en móvil sigue siendo el único acceso
+     a los filtros. El estado (mostrado/ocultado) se recuerda en
+     localStorage, ver setupFiltersToggle. */
+  .filters-toggle {
+    display: block; width: 100%; text-align: left; background: #1a1a1a; border: none;
+    border-bottom: 1px solid #2a2a2a; color: #ccc; padding: 10px 20px; font-size: 13px; cursor: pointer;
+  }
+  .filters-toggle:hover { color: #fff; }
+  .dash-filters.is-hidden { display: none; }
 
   @media (max-width: 860px) {
     /* align-items:flex-start (para el modo fila, en escritorio) pasa a
@@ -45,15 +56,10 @@
        que no quepa (p.ej. la tabla de detalle) se escapa de la página en
        vez de scrollear dentro de su propio contenedor. */
     .dash-layout { flex-direction: column; align-items: stretch; }
-    .filters-toggle {
-      display: block; width: 100%; text-align: left; background: #1a1a1a; border: none;
-      border-bottom: 1px solid #2a2a2a; color: #ccc; padding: 12px 20px; font-size: 13px; cursor: pointer;
-    }
     .dash-filters {
       width: 100%; border-right: none; border-bottom: 1px solid #2a2a2a; box-sizing: border-box;
       position: static;
     }
-    .dash-filters:not(.open) { display: none; }
   }
 </style>
 </head>
@@ -144,6 +150,39 @@
     const m = raw.match(/^#(\d+)\s*(.*)$/)
     if (!m) return { dorsal: Infinity, label: raw }
     return { dorsal: Number(m[1]), label: `${m[1]} ${m[2]}`.trim() }
+  }
+
+  // Mostrar/ocultar el panel de filtros: en escritorio/tablet por defecto
+  // se ven (para no sorprender a quien ya usaba la página), en móvil por
+  // defecto se ocultan (como hasta ahora, hacen falta para ver las
+  // gráficas en una pantalla pequeña) — salvo que el usuario ya haya
+  // elegido explícitamente lo contrario, lo que se recuerda entre
+  // visitas. Un único ajuste compartido por las dos pestañas: quien
+  // oculta los filtros probablemente los quiere ocultos en las dos.
+  function setupFiltersToggle(toggleBtn, filtersEl) {
+    const STORAGE_KEY = 'vv_filtersOpen'
+    const isNarrow = () => window.matchMedia('(max-width: 860px)').matches
+
+    function readVisible() {
+      let saved = null
+      try { saved = localStorage.getItem(STORAGE_KEY) } catch {}
+      if (saved === '1') return true
+      if (saved === '0') return false
+      return !isNarrow()
+    }
+
+    function apply(visible) {
+      filtersEl.classList.toggle('is-hidden', !visible)
+      toggleBtn.textContent = visible ? '☰ Ocultar filtros' : '☰ Mostrar filtros'
+    }
+
+    let visible = readVisible()
+    apply(visible)
+    toggleBtn.addEventListener('click', () => {
+      visible = !visible
+      try { localStorage.setItem(STORAGE_KEY, visible ? '1' : '0') } catch {}
+      apply(visible)
+    })
   }
 
   // ── Utilidades compartidas por las dos pestañas (jugadores y portero):
@@ -516,9 +555,7 @@
             </main>
           </div>`;
 
-        document.getElementById('filtersToggle').addEventListener('click', () => {
-          document.getElementById('dashFilters').classList.toggle('open');
-        });
+        setupFiltersToggle(document.getElementById('filtersToggle'), document.getElementById('dashFilters'));
 
         const filtersCol = document.getElementById('filtersCol');
         // Cada filtro registra cómo sacar "su" valor de un registro
@@ -1269,9 +1306,7 @@
             </main>
           </div>`;
 
-        document.getElementById('filtersToggleGk').addEventListener('click', () => {
-          document.getElementById('dashFiltersGk').classList.toggle('open');
-        });
+        setupFiltersToggle(document.getElementById('filtersToggleGk'), document.getElementById('dashFiltersGk'));
 
         function gkFigure(n, label) {
           return `<div class="figure"><span class="n">${n}</span><span class="l">${label}</span></div>`;
