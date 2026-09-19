@@ -405,7 +405,11 @@
     // sitúa la jugada (partido/parte/tiempo/puesto), la segunda cuenta
     // qué pasó (jugador — mano, tipo — resultado, con color).
     const resultado = record['Resultado'] || '';
-    const isPortero = record[COL_PUESTO] === 'Portero';
+    // No todos los CSV de portero llevan la columna "Puesto" (depende de
+    // qué columnas fijas se marcaran al configurar la exportación en
+    // VideoCuts) — "Posición portero" sí es propia de cualquier exportación
+    // de portero, así que es la señal fiable de que este registro es suyo.
+    const isPortero = record[COL_PUESTO] === 'Portero' || Boolean(record[COL_GK_POSITION]);
     const resultClass = isPortero
       ? (/parada/i.test(resultado) ? 'is-good' : /gol/i.test(resultado) ? 'is-bad' : '')
       : (/gol/i.test(resultado) ? 'is-gol' : /parada/i.test(resultado) ? 'is-parada' : '');
@@ -1056,13 +1060,27 @@
             const isDimmed = selectedZones.length > 0 && !isSelected;
             const strokeColor = isSelected ? '#ffffff' : fill;
             const strokeWidth = isSelected ? 3 : 1;
+            const line1 = `${data.goles}/${data.lanzamientos}`;
+            const line2 = `(${efectividad}%)`;
+            // Las franjas de "fuera" (arriba/izquierda/derecha) son muy
+            // finas — un lanzamiento que acaba ahí sí puede tener datos que
+            // mostrar, pero las dos líneas de texto a tamaño normal no
+            // caben: la de arriba es baja pero ancha (una sola línea más
+            // compacta cabe de sobra), las de los lados son estrechas pero
+            // altas (caben las dos líneas de siempre, pero más pequeñas).
+            const textSvg = h < 32
+              ? `<text x="${cx}" y="${cy + 3}" text-anchor="middle" fill="${textColor}" font-size="9" font-weight="700" style="pointer-events:none">${line1} ${line2}</text>`
+              : w < 32
+              ? `<text x="${cx}" y="${cy - 2}" text-anchor="middle" fill="${textColor}" font-size="9" font-weight="700" style="pointer-events:none">${line1}</text>
+                <text x="${cx}" y="${cy + 9}" text-anchor="middle" fill="${textColor}" font-size="8" style="pointer-events:none">${line2}</text>`
+              : `<text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700" style="pointer-events:none">${line1}</text>
+                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10" style="pointer-events:none">${line2}</text>`;
             return `
               <g class="goal-cell-clickable" data-code="${code}" opacity="${isDimmed ? 0.35 : 1}">
                 <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="${strokeColor}" stroke-width="${strokeWidth}">
-                  <title>${escapeHtml(GOAL_LABELS[code])} — ${data.goles}/${data.lanzamientos} (${efectividad}%)</title>
+                  <title>${escapeHtml(GOAL_LABELS[code])} — ${line1} ${line2}</title>
                 </rect>
-                <text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700" style="pointer-events:none">${data.goles}/${data.lanzamientos}</text>
-                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10" style="pointer-events:none">(${efectividad}%)</text>
+                ${textSvg}
               </g>`;
           }
 
@@ -1224,6 +1242,14 @@
             </aside>
             <main class="dash-main">
               <div class="panel stat-headline" id="statHeadlineGk"></div>
+              <div class="panel" id="gkComparisonPanel" hidden>
+                <div class="panel-title">Comparativa de porteros</div>
+                <div class="chart-legend">
+                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#0ca30c"></span>Paradas</span>
+                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d03b3b"></span>Goles</span>
+                </div>
+                <div id="gkComparisonChart"></div>
+              </div>
               <div class="zones-row">
                 <div class="panel">
                   <div class="panel-title">Zona de lanzamiento rival</div>
@@ -1326,9 +1352,13 @@
         // evento" como en Jugadores — se deriva combinando los booleanos
         // "Lanzamiento 7M" y "Contraataque" (como mucho uno de los dos
         // estará marcado a la vez; si ninguno lo está, es de juego normal).
+        // Ojo: "Contraataque" no siempre es "Sí"/"" — algún CSV trae "No"
+        // explícito, que igualmente cuenta como "no es contraataque" (si se
+        // comprobara con un simple if(valor) un "No" no vacío colaría como
+        // verdadero).
         function gkModality(r) {
-          if (r['Lanzamiento 7M']) return '7 metros';
-          if (r['Contraataque']) return 'Contraataques';
+          if (r['Lanzamiento 7M'] === 'Sí') return '7 metros';
+          if (r['Contraataque'] === 'Sí') return 'Contraataques';
           return 'Juego';
         }
         const gkModalityCounts = new Map();
@@ -1396,9 +1426,114 @@
             gkFigure(goles, 'goles encajados') +
             gkFigure(pct === null ? '—' : `${pct}%`, '% paradas');
 
+          renderGkComparisonChart(gkFilteredExcept('jugador'));
           renderGkZonePositionChart(gkFilteredExcept('zonaLanzamiento'));
           renderGkGoalZoneChart(gkFilteredExcept('zonaPorteria'));
           renderGkDetailTable(filtered);
+        }
+
+        // ── Comparativa de porteros: solo tiene sentido si el CSV trae más
+        // de un portero (p.ej. titular + suplente) — con uno solo sería la
+        // misma información que el KPI de arriba. Barras horizontales, no
+        // verticales como en Jugadores: aquí como mucho hay 2-3 porteros,
+        // así que apilar sus nombres en filas cabe mejor que en columnas.
+        // También actúa como filtro clicable, igual que el resto de gráficos.
+        function renderGkComparisonChart(filtered) {
+          const panel = document.getElementById('gkComparisonPanel');
+          const byPlayer = new Map();
+          for (const r of filtered) {
+            const raw = r[COL_PLAYER];
+            if (!raw) continue;
+            const entry = byPlayer.get(raw) || { paradas: 0, goles: 0, total: 0 };
+            entry.total++;
+            if (r['Resultado'] === 'Parada') entry.paradas++;
+            else if (r['Resultado'] === 'Gol') entry.goles++;
+            byPlayer.set(raw, entry);
+          }
+
+          if (byPlayer.size <= 1) { panel.hidden = true; return; }
+          panel.hidden = false;
+
+          const keepers = [...byPlayer.entries()]
+            .map(([raw, { paradas, goles, total }]) => {
+              const { dorsal, label } = parsePlayer(raw);
+              return { raw, label, dorsalLabel: `#${dorsal}`, paradas, goles, total, pct: savePct(paradas, goles) };
+            })
+            .sort((a, b) => b.total - a.total);
+
+          document.getElementById('gkComparisonChart').innerHTML = buildGkComparisonSVG(keepers);
+
+          document.querySelectorAll('#gkComparisonChart .gk-bar-group').forEach((g) => {
+            g.addEventListener('click', () => toggleGkComparisonFilter(g.dataset.player));
+          });
+        }
+
+        function toggleGkComparisonFilter(raw) {
+          const cur = gkActiveFilters.jugador.selected;
+          const next = (cur.length === 1 && cur[0] === raw) ? [] : [raw];
+          gkActiveFilters.jugador.selected = next;
+          gkPlayerFilter.setSelected(next);
+          renderGkStats();
+        }
+
+        function buildGkComparisonSVG(keepers) {
+          const rowH = 50;
+          const marginTop = 22, marginBottom = 14, marginLeft = 150, marginRight = 95;
+          const W = 800;
+          const plotW = W - marginLeft - marginRight;
+          const H = marginTop + marginBottom + keepers.length * rowH;
+          const barH = 16, gap = 3;
+          const axisMax = niceMax(Math.max(...keepers.map((k) => Math.max(k.paradas, k.goles))));
+          const COLOR_PARADAS = '#0ca30c';
+          const COLOR_GOLES = '#d03b3b';
+          const TEXT_MUTED = '#898781';
+          const TEXT_SECONDARY = '#c3c2b7';
+          const GRID = '#2c2c2a';
+          const AXIS = '#383835';
+          const selectedPlayers = gkActiveFilters.jugador.selected;
+
+          let gridSvg = '';
+          for (let v = 0; v <= axisMax; v += 5) {
+            const x = marginLeft + (v / axisMax) * plotW;
+            gridSvg += `<line x1="${x}" y1="${marginTop - 6}" x2="${x}" y2="${H - marginBottom + 2}" stroke="${v === 0 ? AXIS : GRID}" stroke-width="1" />`;
+            gridSvg += `<text x="${x}" y="${marginTop - 10}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="10">${v}</text>`;
+          }
+
+          const rowsSvg = keepers.map((k, i) => {
+            const rowY = marginTop + i * rowH;
+            const centerY = rowY + rowH / 2;
+            const paradasW = (k.paradas / axisMax) * plotW;
+            const golesW = (k.goles / axisMax) * plotW;
+            const paradasY = centerY - barH - gap / 2;
+            const golesY = centerY + gap / 2;
+
+            const isSelected = selectedPlayers.includes(k.raw);
+            const isDimmed = selectedPlayers.length > 0 && !isSelected;
+            const highlight = isSelected ? ` stroke="#fff" stroke-width="1.5"` : '';
+            const pctLabel = k.pct === null ? '—' : `${k.pct}%`;
+
+            // Nombre completo si cabe en el margen izquierdo, si no el
+            // dorsal — mismo criterio que en la comparativa de Jugadores,
+            // adaptado a que aquí el hueco disponible es horizontal, no el
+            // ancho de una columna.
+            const CHAR_W = 6.2;
+            const fitsFull = k.label.length * CHAR_W <= marginLeft - 14;
+            const rowLabel = fitsFull ? k.label : k.dorsalLabel;
+
+            return `
+              <g class="gk-bar-group" data-player="${escapeHtml(k.raw)}" opacity="${isDimmed ? 0.35 : 1}">
+                <rect x="0" y="${rowY}" width="${W}" height="${rowH}" fill="transparent" />
+                <text x="${marginLeft - 10}" y="${centerY}" text-anchor="end" dominant-baseline="middle" fill="${TEXT_SECONDARY}" font-size="12"><title>${escapeHtml(k.label)}</title>${escapeHtml(rowLabel)}</text>
+                <rect x="${marginLeft}" y="${paradasY}" width="${Math.max(0, paradasW)}" height="${barH}" rx="4" fill="${COLOR_PARADAS}"${highlight}><title>${escapeHtml(k.label)} — Paradas: ${k.paradas}</title></rect>
+                <rect x="${marginLeft}" y="${golesY}" width="${Math.max(0, golesW)}" height="${barH}" rx="4" fill="${COLOR_GOLES}"${highlight}><title>${escapeHtml(k.label)} — Goles: ${k.goles}</title></rect>
+                <text x="${marginLeft + plotW + 10}" y="${centerY}" dominant-baseline="middle" fill="${TEXT_MUTED}" font-size="11">${k.paradas}/${k.paradas + k.goles} (${pctLabel})</text>
+              </g>`;
+          }).join('');
+
+          return `<svg viewBox="0 0 ${W} ${H}" class="player-chart-svg" role="img" aria-label="Comparativa de porteros: paradas y goles">
+            ${gridSvg}
+            ${rowsSvg}
+          </svg>`;
         }
 
         // ── Zona de lanzamiento rival: mismas 13 zonas e imagen de pista
@@ -1501,13 +1636,27 @@
             const strokeWidth = isSelected ? 3 : 1;
             const line1 = pct === null ? `${data.total}` : `${data.paradas}/${data.paradas + data.goles}`;
             const line2 = pct === null ? '(fuera)' : `(${pct}%)`;
+            const rectSvg = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="${strokeColor}" stroke-width="${strokeWidth}">
+                  <title>${escapeHtml(GOAL_LABELS[code])} — ${line1} paradas ${line2}</title>
+                </rect>`;
+            // Las franjas de "fuera" (arriba/izquierda/derecha) son muy
+            // finas — un lanzamiento que acaba ahí sí puede tener datos que
+            // mostrar (p.ej. "Fuera arriba"), pero las dos líneas de texto a
+            // tamaño normal no caben: la de arriba es baja pero ancha (una
+            // sola línea más compacta cabe de sobra), las de los lados son
+            // estrechas pero altas (caben las dos líneas de siempre, pero
+            // más pequeñas).
+            const textSvg = h < 32
+              ? `<text x="${cx}" y="${cy + 3}" text-anchor="middle" fill="${textColor}" font-size="9" font-weight="700" style="pointer-events:none">${line1} ${line2}</text>`
+              : w < 32
+              ? `<text x="${cx}" y="${cy - 2}" text-anchor="middle" fill="${textColor}" font-size="9" font-weight="700" style="pointer-events:none">${line1}</text>
+                <text x="${cx}" y="${cy + 9}" text-anchor="middle" fill="${textColor}" font-size="7.5" style="pointer-events:none">${line2.replace(/[()]/g, '')}</text>`
+              : `<text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700" style="pointer-events:none">${line1}</text>
+                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10" style="pointer-events:none">${line2}</text>`;
             return `
               <g class="goal-cell-clickable" data-code="${code}" opacity="${isDimmed ? 0.35 : 1}">
-                <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" fill-opacity="0.85" stroke="${strokeColor}" stroke-width="${strokeWidth}">
-                  <title>${escapeHtml(GOAL_LABELS[code])} — ${line1} paradas ${line2}</title>
-                </rect>
-                <text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="${textColor}" font-size="12" font-weight="700" style="pointer-events:none">${line1}</text>
-                <text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="${textColor}" font-size="10" style="pointer-events:none">${line2}</text>
+                ${rectSvg}
+                ${textSvg}
               </g>`;
           }
 
