@@ -244,11 +244,22 @@ button { font-family: inherit; }
 .video-modal-openext:hover { text-decoration: underline; }
 .video-modal-close { background: none; border: none; color: #888; font-size: 16px; cursor: pointer; padding: 4px 8px; line-height: 1; }
 .video-modal-close:hover { color: #fff; }
-.video-modal-autoadvance {
-  display: flex; align-items: center; gap: 7px; padding: 7px 12px; background: #161616;
-  color: #999; font-size: 11px; cursor: pointer; border-bottom: 1px solid #222;
+.video-modal-toggles {
+  display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 7px 12px; background: #161616;
+  border-bottom: 1px solid #222;
 }
-.video-modal-autoadvance input { cursor: pointer; }
+.video-modal-toggle { display: flex; align-items: center; gap: 7px; color: #999; font-size: 11px; cursor: pointer; }
+.video-modal-toggle input { cursor: pointer; }
+/* Más específico que ".video-modal-frame > div" (pensada para el
+   reproductor, inset:0 a pantalla completa) para que no se la lleve por
+   delante y la deje también a pantalla completa. */
+.video-modal-frame > .video-modal-goalzone-overlay {
+  position: absolute; top: auto; left: auto; right: 10px; bottom: 10px;
+  width: 84px; height: auto;
+  background: rgba(10,10,10,0.72); border-radius: 6px; padding: 4px;
+  pointer-events: none; z-index: 1;
+}
+.video-modal-goalzone-overlay svg { display: block; width: 100%; height: auto; }
 .video-modal-resize {
   position: absolute; top: 0; bottom: 0; right: 0; width: 12px; cursor: ew-resize; z-index: 1;
   touch-action: none;

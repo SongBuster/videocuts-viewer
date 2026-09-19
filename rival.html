@@ -90,12 +90,19 @@
         <a id="videoModalOpenExt" href="#" target="_blank" rel="noopener" class="video-modal-openext">Abrir en YouTube ↗</a>
         <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
       </div>
-      <label class="video-modal-autoadvance">
-        <input type="checkbox" id="videoModalAutoAdvance" checked />
-        Pasar automáticamente al siguiente vídeo al terminar
-      </label>
+      <div class="video-modal-toggles">
+        <label class="video-modal-toggle">
+          <input type="checkbox" id="videoModalAutoAdvance" checked />
+          Pasar automáticamente al siguiente vídeo al terminar
+        </label>
+        <label class="video-modal-toggle">
+          <input type="checkbox" id="videoModalShowGoalZone" checked />
+          Mostrar zona de portería sobre el vídeo
+        </label>
+      </div>
       <div class="video-modal-frame">
         <div id="videoModalPlayer"></div>
+        <div class="video-modal-goalzone-overlay" id="videoModalGoalZoneOverlay" hidden></div>
       </div>
       <div class="video-modal-info" id="videoModalInfo"></div>
       <div class="video-modal-resize" id="videoModalResize" title="Arrastra para cambiar el tamaño"></div>
@@ -235,6 +242,8 @@
   const videoModalNext = document.getElementById('videoModalNext');
   const videoModalReplay = document.getElementById('videoModalReplay');
   const videoModalAutoAdvance = document.getElementById('videoModalAutoAdvance');
+  const videoModalShowGoalZone = document.getElementById('videoModalShowGoalZone');
+  const videoModalGoalZoneOverlay = document.getElementById('videoModalGoalZoneOverlay');
   const videoModal = document.querySelector('.video-modal');
   const videoModalResize = document.getElementById('videoModalResize');
   document.getElementById('videoModalClose').addEventListener('click', closeVideoModal);
@@ -242,6 +251,58 @@
   videoModalPrev.addEventListener('click', () => goToVideo(-1));
   videoModalNext.addEventListener('click', () => goToVideo(1));
   videoModalReplay.addEventListener('click', replayVideo);
+
+  // Zona de portería superpuesta sobre el vídeo: mini rejilla igual que la
+  // del mapa de estadísticas, pero solo con la celda de este lanzamiento
+  // resaltada — sin datos ni etiquetas, es solo una referencia visual
+  // rápida de dónde fue el disparo. Opcional (se puede ocultar si tapa
+  // demasiado) y se recuerda la preferencia entre visitas.
+  try {
+    videoModalShowGoalZone.checked = localStorage.getItem('vv_showGoalZoneOverlay') !== '0';
+  } catch {}
+  let currentGoalCode = null;
+  function updateGoalZoneOverlay() {
+    const show = videoModalShowGoalZone.checked && currentGoalCode;
+    videoModalGoalZoneOverlay.hidden = !show;
+    if (show) videoModalGoalZoneOverlay.innerHTML = buildGoalZoneOverlaySVG(currentGoalCode);
+  }
+  videoModalShowGoalZone.addEventListener('change', () => {
+    try { localStorage.setItem('vv_showGoalZoneOverlay', videoModalShowGoalZone.checked ? '1' : '0'); } catch {}
+    updateGoalZoneOverlay();
+  });
+
+  function buildGoalZoneOverlaySVG(highlightCode) {
+    const { cols, cellW, cellH, post, outSide, outTop } = GOAL_LAYOUT;
+    const gridW = cols * cellW;
+    const gridH = 3 * cellH;
+    const gridX = outSide + post;
+    const gridY = outTop + post;
+    const width = gridW + post * 2 + outSide * 2;
+    const height = gridH + post * 2 + outTop;
+
+    function cell(code, x, y, w, h) {
+      const isHit = code === highlightCode;
+      const fill = isHit ? '#3b82f6' : '#2a2a2a';
+      const stroke = isHit ? '#fff' : '#444';
+      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${isHit ? 2 : 1}" />`;
+    }
+
+    const inner = GOAL_INNER_ZONES.map((code, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      return cell(code, gridX + col * cellW, gridY + row * cellH, cellW, cellH);
+    }).join('');
+
+    const outer = cell('out-top', gridX, 0, gridW, outTop) +
+      cell('out-left', 0, gridY, outSide, gridH) +
+      cell('out-right', gridX + gridW, gridY, outSide, gridH);
+
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Zona de portería de este lanzamiento">
+      ${outer}
+      <rect x="${gridX - post / 2}" y="${gridY - post / 2}" width="${gridW + post}" height="${gridH + post}" fill="none" stroke="#666" stroke-width="${post}" />
+      ${inner}
+    </svg>`;
+  }
 
   // Tamaño del modal de vídeo: se puede arrastrar desde el borde
   // derecho (el alto lo pone solo el aspect-ratio del vídeo) y se
@@ -464,6 +525,9 @@
     document.getElementById('videoModalInfo').innerHTML = `
       <div class="video-modal-info-line video-modal-info-context">${line1}</div>
       <div class="video-modal-info-line">${line2}</div>`;
+
+    currentGoalCode = GOAL_LABEL_TO_CODE[record[COL_GOAL]] || null;
+    updateGoalZoneOverlay();
 
     videoModalOverlay.hidden = false;
   }
