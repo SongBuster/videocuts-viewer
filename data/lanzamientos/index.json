@@ -14,5 +14,21 @@
     "code": "J1",
     "rowCount": 42,
     "generatedAt": "2026-09-20T15:07:07.677Z"
+  },
+  {
+    "id": "jugadores-ubu-san-pablo-burgos-j1",
+    "mode": "jugadores",
+    "team": "UBU SAN PABLO BURGOS",
+    "code": "J1",
+    "rowCount": 46,
+    "generatedAt": "2026-09-20T15:09:13.284Z"
+  },
+  {
+    "id": "portero-ubu-san-pablo-burgos-j1",
+    "mode": "portero",
+    "team": "UBU SAN PABLO BURGOS",
+    "code": "J1",
+    "rowCount": 39,
+    "generatedAt": "2026-09-20T15:09:13.286Z"
   }
 ]
