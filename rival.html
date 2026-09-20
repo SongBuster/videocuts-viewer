@@ -36,7 +36,18 @@
   .filters-col .dd-filter { display: block; }
   .filters-col .dd-filter-btn { width: 100%; box-sizing: border-box; justify-content: space-between; }
   .dash-main { flex: 1; min-width: 0; padding: 20px; }
-  .filters-toggle { display: none; }
+
+  /* El botón para mostrar/ocultar filtros vale para cualquier tamaño de
+     pantalla (antes solo existía en móvil) — en escritorio/tablet permite
+     ganar ancho para las gráficas; en móvil sigue siendo el único acceso
+     a los filtros. El estado (mostrado/ocultado) se recuerda en
+     localStorage, ver setupFiltersToggle. */
+  .filters-toggle {
+    display: block; width: 100%; text-align: left; background: #1a1a1a; border: none;
+    border-bottom: 1px solid #2a2a2a; color: #ccc; padding: 10px 20px; font-size: 13px; cursor: pointer;
+  }
+  .filters-toggle:hover { color: #fff; }
+  .dash-filters.is-hidden { display: none; }
 
   @media (max-width: 860px) {
     /* align-items:flex-start (para el modo fila, en escritorio) pasa a
@@ -45,15 +56,10 @@
        que no quepa (p.ej. la tabla de detalle) se escapa de la página en
        vez de scrollear dentro de su propio contenedor. */
     .dash-layout { flex-direction: column; align-items: stretch; }
-    .filters-toggle {
-      display: block; width: 100%; text-align: left; background: #1a1a1a; border: none;
-      border-bottom: 1px solid #2a2a2a; color: #ccc; padding: 12px 20px; font-size: 13px; cursor: pointer;
-    }
     .dash-filters {
       width: 100%; border-right: none; border-bottom: 1px solid #2a2a2a; box-sizing: border-box;
       position: static;
     }
-    .dash-filters:not(.open) { display: none; }
   }
 </style>
 </head>
@@ -84,12 +90,19 @@
         <a id="videoModalOpenExt" href="#" target="_blank" rel="noopener" class="video-modal-openext">Abrir en YouTube ↗</a>
         <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
       </div>
-      <label class="video-modal-autoadvance">
-        <input type="checkbox" id="videoModalAutoAdvance" checked />
-        Pasar automáticamente al siguiente vídeo al terminar
-      </label>
+      <div class="video-modal-toggles">
+        <label class="video-modal-toggle">
+          <input type="checkbox" id="videoModalAutoAdvance" checked />
+          Pasar automáticamente al siguiente vídeo al terminar
+        </label>
+        <label class="video-modal-toggle">
+          <input type="checkbox" id="videoModalShowGoalZone" checked />
+          Mostrar zona de portería sobre el vídeo
+        </label>
+      </div>
       <div class="video-modal-frame">
         <div id="videoModalPlayer"></div>
+        <div class="video-modal-goalzone-overlay" id="videoModalGoalZoneOverlay" hidden></div>
       </div>
       <div class="video-modal-info" id="videoModalInfo"></div>
       <div class="video-modal-resize" id="videoModalResize" title="Arrastra para cambiar el tamaño"></div>
@@ -146,6 +159,78 @@
     return { dorsal: Number(m[1]), label: `${m[1]} ${m[2]}`.trim() }
   }
 
+  // Mostrar/ocultar el panel de filtros: en escritorio/tablet por defecto
+  // se ven (para no sorprender a quien ya usaba la página), en móvil por
+  // defecto se ocultan (como hasta ahora, hacen falta para ver las
+  // gráficas en una pantalla pequeña) — salvo que el usuario ya haya
+  // elegido explícitamente lo contrario, lo que se recuerda entre
+  // visitas. Un único ajuste compartido por las dos pestañas: quien
+  // oculta los filtros probablemente los quiere ocultos en las dos.
+  function setupFiltersToggle(toggleBtn, filtersEl) {
+    const STORAGE_KEY = 'vv_filtersOpen'
+    const isNarrow = () => window.matchMedia('(max-width: 860px)').matches
+
+    function readVisible() {
+      let saved = null
+      try { saved = localStorage.getItem(STORAGE_KEY) } catch {}
+      if (saved === '1') return true
+      if (saved === '0') return false
+      return !isNarrow()
+    }
+
+    function apply(visible) {
+      filtersEl.classList.toggle('is-hidden', !visible)
+      toggleBtn.textContent = visible ? '☰ Ocultar filtros' : '☰ Mostrar filtros'
+    }
+
+    let visible = readVisible()
+    apply(visible)
+    toggleBtn.addEventListener('click', () => {
+      visible = !visible
+      try { localStorage.setItem(STORAGE_KEY, visible ? '1' : '0') } catch {}
+      apply(visible)
+    })
+  }
+
+  // Zonas de los mapas de calor (lanzamiento y portería, en las dos
+  // pestañas): un clic añade/quita esa zona de la selección — se puede
+  // filtrar por varias a la vez (p.ej. las dos zonas de extremo izquierdo).
+  // Doble clic dice "solo esta" (descarta las demás); en pantallas
+  // táctiles no hay doble clic, así que el gesto equivalente es mantener
+  // pulsado.
+  //
+  // "solo esta" vuelve a pintar el gráfico entero (nuevos elementos, con
+  // sus propios listeners) antes de que el dedo se levante — un flag local
+  // por elemento no sobrevive a eso, así que para evitar el "click
+  // fantasma" que el navegador dispara tras soltar una pulsación larga se
+  // usa un margen de tiempo compartido, no atado a un elemento concreto.
+  let recentLongPressAt = 0
+  function wireZoneInteractions(elements, { onToggle, onSelectOnly }) {
+    const LONG_PRESS_MS = 500
+    const CLICK_SUPPRESS_MS = 400
+    elements.forEach((el) => {
+      const code = el.dataset.code
+      let pressTimer = null
+
+      el.addEventListener('click', () => {
+        if (Date.now() - recentLongPressAt < CLICK_SUPPRESS_MS) return
+        onToggle(code)
+      })
+      el.addEventListener('dblclick', (e) => {
+        e.preventDefault()
+        onSelectOnly(code)
+      })
+      el.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'touch') return // el ratón ya tiene doble clic
+        pressTimer = setTimeout(() => { recentLongPressAt = Date.now(); onSelectOnly(code) }, LONG_PRESS_MS)
+      })
+      const cancelPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null } }
+      el.addEventListener('pointerup', cancelPress)
+      el.addEventListener('pointercancel', cancelPress)
+      el.addEventListener('pointerleave', cancelPress)
+    })
+  }
+
   // ── Utilidades compartidas por las dos pestañas (jugadores y portero):
   // extraer el código de una zona ("2 · Extremo..." → "2"/"Extremo..."), y
   // el degradado rojo→amarillo→verde por % de efectividad (o de paradas,
@@ -196,6 +281,8 @@
   const videoModalNext = document.getElementById('videoModalNext');
   const videoModalReplay = document.getElementById('videoModalReplay');
   const videoModalAutoAdvance = document.getElementById('videoModalAutoAdvance');
+  const videoModalShowGoalZone = document.getElementById('videoModalShowGoalZone');
+  const videoModalGoalZoneOverlay = document.getElementById('videoModalGoalZoneOverlay');
   const videoModal = document.querySelector('.video-modal');
   const videoModalResize = document.getElementById('videoModalResize');
   document.getElementById('videoModalClose').addEventListener('click', closeVideoModal);
@@ -203,6 +290,58 @@
   videoModalPrev.addEventListener('click', () => goToVideo(-1));
   videoModalNext.addEventListener('click', () => goToVideo(1));
   videoModalReplay.addEventListener('click', replayVideo);
+
+  // Zona de portería superpuesta sobre el vídeo: mini rejilla igual que la
+  // del mapa de estadísticas, pero solo con la celda de este lanzamiento
+  // resaltada — sin datos ni etiquetas, es solo una referencia visual
+  // rápida de dónde fue el disparo. Opcional (se puede ocultar si tapa
+  // demasiado) y se recuerda la preferencia entre visitas.
+  try {
+    videoModalShowGoalZone.checked = localStorage.getItem('vv_showGoalZoneOverlay') !== '0';
+  } catch {}
+  let currentGoalCode = null;
+  function updateGoalZoneOverlay() {
+    const show = videoModalShowGoalZone.checked && currentGoalCode;
+    videoModalGoalZoneOverlay.hidden = !show;
+    if (show) videoModalGoalZoneOverlay.innerHTML = buildGoalZoneOverlaySVG(currentGoalCode);
+  }
+  videoModalShowGoalZone.addEventListener('change', () => {
+    try { localStorage.setItem('vv_showGoalZoneOverlay', videoModalShowGoalZone.checked ? '1' : '0'); } catch {}
+    updateGoalZoneOverlay();
+  });
+
+  function buildGoalZoneOverlaySVG(highlightCode) {
+    const { cols, cellW, cellH, post, outSide, outTop } = GOAL_LAYOUT;
+    const gridW = cols * cellW;
+    const gridH = 3 * cellH;
+    const gridX = outSide + post;
+    const gridY = outTop + post;
+    const width = gridW + post * 2 + outSide * 2;
+    const height = gridH + post * 2 + outTop;
+
+    function cell(code, x, y, w, h) {
+      const isHit = code === highlightCode;
+      const fill = isHit ? '#3b82f6' : '#2a2a2a';
+      const stroke = isHit ? '#fff' : '#444';
+      return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${isHit ? 2 : 1}" />`;
+    }
+
+    const inner = GOAL_INNER_ZONES.map((code, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      return cell(code, gridX + col * cellW, gridY + row * cellH, cellW, cellH);
+    }).join('');
+
+    const outer = cell('out-top', gridX, 0, gridW, outTop) +
+      cell('out-left', 0, gridY, outSide, gridH) +
+      cell('out-right', gridX + gridW, gridY, outSide, gridH);
+
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Zona de portería de este lanzamiento">
+      ${outer}
+      <rect x="${gridX - post / 2}" y="${gridY - post / 2}" width="${gridW + post}" height="${gridH + post}" fill="none" stroke="#666" stroke-width="${post}" />
+      ${inner}
+    </svg>`;
+  }
 
   // Tamaño del modal de vídeo: se puede arrastrar desde el borde
   // derecho (el alto lo pone solo el aspect-ratio del vídeo) y se
@@ -426,6 +565,9 @@
       <div class="video-modal-info-line video-modal-info-context">${line1}</div>
       <div class="video-modal-info-line">${line2}</div>`;
 
+    currentGoalCode = GOAL_LABEL_TO_CODE[record[COL_GOAL]] || null;
+    updateGoalZoneOverlay();
+
     videoModalOverlay.hidden = false;
   }
 
@@ -499,11 +641,17 @@
               </div>` : ''}
               <div class="zones-row">
                 <div class="panel">
-                  <div class="panel-title">Zona de lanzamiento</div>
+                  <div class="panel-title-row">
+                    <div class="panel-title">Zona de lanzamiento</div>
+                    <button type="button" class="zone-clear-btn" id="zonePositionClear" disabled>Borrar selección</button>
+                  </div>
                   <div id="zonePositionChart"></div>
                 </div>
                 <div class="panel">
-                  <div class="panel-title">Zona de portería</div>
+                  <div class="panel-title-row">
+                    <div class="panel-title">Zona de portería</div>
+                    <button type="button" class="zone-clear-btn" id="goalZoneClear" disabled>Borrar selección</button>
+                  </div>
                   <div id="goalZoneChart"></div>
                 </div>
               </div>
@@ -516,9 +664,7 @@
             </main>
           </div>`;
 
-        document.getElementById('filtersToggle').addEventListener('click', () => {
-          document.getElementById('dashFilters').classList.toggle('open');
-        });
+        setupFiltersToggle(document.getElementById('filtersToggle'), document.getElementById('dashFilters'));
 
         const filtersCol = document.getElementById('filtersCol');
         // Cada filtro registra cómo sacar "su" valor de un registro
@@ -690,6 +836,15 @@
         if (hasPuesto) {
           activeFilters.puesto = { getValue: (r) => POSITION_LABEL_TO_CODE[r[COL_PUESTO]] || null, selected: [] };
         }
+
+        document.getElementById('zonePositionClear').addEventListener('click', () => {
+          activeFilters.zonaLanzamiento.selected = [];
+          renderStats();
+        });
+        document.getElementById('goalZoneClear').addEventListener('click', () => {
+          activeFilters.zonaPorteria.selected = [];
+          renderStats();
+        });
 
         document.getElementById('filtersReset').addEventListener('click', () => {
           for (const key of Object.keys(activeFilters)) {
@@ -1010,14 +1165,21 @@
               ${bubblesSvg}
             </svg>`;
 
-          document.querySelectorAll('#zonePositionChart .zone-bubble-clickable').forEach((g) => {
-            g.addEventListener('click', () => toggleZoneFilter(g.dataset.code));
+          wireZoneInteractions(document.querySelectorAll('#zonePositionChart .zone-bubble-clickable'), {
+            onToggle: toggleZoneFilter,
+            onSelectOnly: selectOnlyZoneFilter
           });
+          document.getElementById('zonePositionClear').disabled = selectedZones.length === 0;
         }
 
         function toggleZoneFilter(code) {
           const cur = activeFilters.zonaLanzamiento.selected;
-          activeFilters.zonaLanzamiento.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          activeFilters.zonaLanzamiento.selected = cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code];
+          renderStats();
+        }
+
+        function selectOnlyZoneFilter(code) {
+          activeFilters.zonaLanzamiento.selected = [code];
           renderStats();
         }
 
@@ -1101,14 +1263,21 @@
               ${inner}
             </svg>`;
 
-          document.querySelectorAll('#goalZoneChart .goal-cell-clickable').forEach((g) => {
-            g.addEventListener('click', () => toggleGoalZoneFilter(g.dataset.code));
+          wireZoneInteractions(document.querySelectorAll('#goalZoneChart .goal-cell-clickable'), {
+            onToggle: toggleGoalZoneFilter,
+            onSelectOnly: selectOnlyGoalZoneFilter
           });
+          document.getElementById('goalZoneClear').disabled = selectedZones.length === 0;
         }
 
         function toggleGoalZoneFilter(code) {
           const cur = activeFilters.zonaPorteria.selected;
-          activeFilters.zonaPorteria.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          activeFilters.zonaPorteria.selected = cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code];
+          renderStats();
+        }
+
+        function selectOnlyGoalZoneFilter(code) {
+          activeFilters.zonaPorteria.selected = [code];
           renderStats();
         }
 
@@ -1252,11 +1421,17 @@
               </div>
               <div class="zones-row">
                 <div class="panel">
-                  <div class="panel-title">Zona de lanzamiento rival</div>
+                  <div class="panel-title-row">
+                    <div class="panel-title">Zona de lanzamiento rival</div>
+                    <button type="button" class="zone-clear-btn" id="zonePositionClearGk" disabled>Borrar selección</button>
+                  </div>
                   <div id="zonePositionChartGk"></div>
                 </div>
                 <div class="panel">
-                  <div class="panel-title">Zona de portería</div>
+                  <div class="panel-title-row">
+                    <div class="panel-title">Zona de portería</div>
+                    <button type="button" class="zone-clear-btn" id="goalZoneClearGk" disabled>Borrar selección</button>
+                  </div>
                   <div id="goalZoneChartGk"></div>
                 </div>
               </div>
@@ -1269,9 +1444,7 @@
             </main>
           </div>`;
 
-        document.getElementById('filtersToggleGk').addEventListener('click', () => {
-          document.getElementById('dashFiltersGk').classList.toggle('open');
-        });
+        setupFiltersToggle(document.getElementById('filtersToggleGk'), document.getElementById('dashFiltersGk'));
 
         function gkFigure(n, label) {
           return `<div class="figure"><span class="n">${n}</span><span class="l">${label}</span></div>`;
@@ -1385,6 +1558,15 @@
         // se activan solo al pulsar sobre su gráfico, sin desplegable propio.
         gkActiveFilters.zonaLanzamiento = { getValue: (r) => parseZoneCode(r[COL_POSITION]), selected: [] };
         gkActiveFilters.zonaPorteria = { getValue: (r) => GOAL_LABEL_TO_CODE[r[COL_GOAL]] || null, selected: [] };
+
+        document.getElementById('zonePositionClearGk').addEventListener('click', () => {
+          gkActiveFilters.zonaLanzamiento.selected = [];
+          renderGkStats();
+        });
+        document.getElementById('goalZoneClearGk').addEventListener('click', () => {
+          gkActiveFilters.zonaPorteria.selected = [];
+          renderGkStats();
+        });
 
         document.getElementById('filtersResetGk').addEventListener('click', () => {
           for (const key of Object.keys(gkActiveFilters)) {
@@ -1586,14 +1768,21 @@
               ${bubblesSvg}
             </svg>`;
 
-          document.querySelectorAll('#zonePositionChartGk .zone-bubble-clickable').forEach((g) => {
-            g.addEventListener('click', () => toggleGkZoneFilter(g.dataset.code));
+          wireZoneInteractions(document.querySelectorAll('#zonePositionChartGk .zone-bubble-clickable'), {
+            onToggle: toggleGkZoneFilter,
+            onSelectOnly: selectOnlyGkZoneFilter
           });
+          document.getElementById('zonePositionClearGk').disabled = selectedZones.length === 0;
         }
 
         function toggleGkZoneFilter(code) {
           const cur = gkActiveFilters.zonaLanzamiento.selected;
-          gkActiveFilters.zonaLanzamiento.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          gkActiveFilters.zonaLanzamiento.selected = cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code];
+          renderGkStats();
+        }
+
+        function selectOnlyGkZoneFilter(code) {
+          gkActiveFilters.zonaLanzamiento.selected = [code];
           renderGkStats();
         }
 
@@ -1677,14 +1866,21 @@
               ${inner}
             </svg>`;
 
-          document.querySelectorAll('#goalZoneChartGk .goal-cell-clickable').forEach((g) => {
-            g.addEventListener('click', () => toggleGkGoalZoneFilter(g.dataset.code));
+          wireZoneInteractions(document.querySelectorAll('#goalZoneChartGk .goal-cell-clickable'), {
+            onToggle: toggleGkGoalZoneFilter,
+            onSelectOnly: selectOnlyGkGoalZoneFilter
           });
+          document.getElementById('goalZoneClearGk').disabled = selectedZones.length === 0;
         }
 
         function toggleGkGoalZoneFilter(code) {
           const cur = gkActiveFilters.zonaPorteria.selected;
-          gkActiveFilters.zonaPorteria.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          gkActiveFilters.zonaPorteria.selected = cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code];
+          renderGkStats();
+        }
+
+        function selectOnlyGkGoalZoneFilter(code) {
+          gkActiveFilters.zonaPorteria.selected = [code];
           renderGkStats();
         }
 
