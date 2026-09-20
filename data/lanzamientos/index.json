@@ -30,5 +30,13 @@
     "code": "Sin código",
     "rowCount": 42,
     "generatedAt": "2026-09-19T07:24:37.789Z"
+  },
+  {
+    "id": "jugadores-ubu-san-pablo-burgos-sin-codigo",
+    "mode": "jugadores",
+    "team": "UBU SAN PABLO BURGOS",
+    "code": "Sin código",
+    "rowCount": 22,
+    "generatedAt": "2026-09-20T07:25:02.022Z"
   }
 ]
