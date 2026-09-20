@@ -192,6 +192,45 @@
     })
   }
 
+  // Zonas de los mapas de calor (lanzamiento y portería, en las dos
+  // pestañas): un clic añade/quita esa zona de la selección — se puede
+  // filtrar por varias a la vez (p.ej. las dos zonas de extremo izquierdo).
+  // Doble clic dice "solo esta" (descarta las demás); en pantallas
+  // táctiles no hay doble clic, así que el gesto equivalente es mantener
+  // pulsado.
+  //
+  // "solo esta" vuelve a pintar el gráfico entero (nuevos elementos, con
+  // sus propios listeners) antes de que el dedo se levante — un flag local
+  // por elemento no sobrevive a eso, así que para evitar el "click
+  // fantasma" que el navegador dispara tras soltar una pulsación larga se
+  // usa un margen de tiempo compartido, no atado a un elemento concreto.
+  let recentLongPressAt = 0
+  function wireZoneInteractions(elements, { onToggle, onSelectOnly }) {
+    const LONG_PRESS_MS = 500
+    const CLICK_SUPPRESS_MS = 400
+    elements.forEach((el) => {
+      const code = el.dataset.code
+      let pressTimer = null
+
+      el.addEventListener('click', () => {
+        if (Date.now() - recentLongPressAt < CLICK_SUPPRESS_MS) return
+        onToggle(code)
+      })
+      el.addEventListener('dblclick', (e) => {
+        e.preventDefault()
+        onSelectOnly(code)
+      })
+      el.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'touch') return // el ratón ya tiene doble clic
+        pressTimer = setTimeout(() => { recentLongPressAt = Date.now(); onSelectOnly(code) }, LONG_PRESS_MS)
+      })
+      const cancelPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null } }
+      el.addEventListener('pointerup', cancelPress)
+      el.addEventListener('pointercancel', cancelPress)
+      el.addEventListener('pointerleave', cancelPress)
+    })
+  }
+
   // ── Utilidades compartidas por las dos pestañas (jugadores y portero):
   // extraer el código de una zona ("2 · Extremo..." → "2"/"Extremo..."), y
   // el degradado rojo→amarillo→verde por % de efectividad (o de paradas,
@@ -602,11 +641,17 @@
               </div>` : ''}
               <div class="zones-row">
                 <div class="panel">
-                  <div class="panel-title">Zona de lanzamiento</div>
+                  <div class="panel-title-row">
+                    <div class="panel-title">Zona de lanzamiento</div>
+                    <button type="button" class="zone-clear-btn" id="zonePositionClear" disabled>Borrar selección</button>
+                  </div>
                   <div id="zonePositionChart"></div>
                 </div>
                 <div class="panel">
-                  <div class="panel-title">Zona de portería</div>
+                  <div class="panel-title-row">
+                    <div class="panel-title">Zona de portería</div>
+                    <button type="button" class="zone-clear-btn" id="goalZoneClear" disabled>Borrar selección</button>
+                  </div>
                   <div id="goalZoneChart"></div>
                 </div>
               </div>
@@ -791,6 +836,15 @@
         if (hasPuesto) {
           activeFilters.puesto = { getValue: (r) => POSITION_LABEL_TO_CODE[r[COL_PUESTO]] || null, selected: [] };
         }
+
+        document.getElementById('zonePositionClear').addEventListener('click', () => {
+          activeFilters.zonaLanzamiento.selected = [];
+          renderStats();
+        });
+        document.getElementById('goalZoneClear').addEventListener('click', () => {
+          activeFilters.zonaPorteria.selected = [];
+          renderStats();
+        });
 
         document.getElementById('filtersReset').addEventListener('click', () => {
           for (const key of Object.keys(activeFilters)) {
@@ -1111,14 +1165,21 @@
               ${bubblesSvg}
             </svg>`;
 
-          document.querySelectorAll('#zonePositionChart .zone-bubble-clickable').forEach((g) => {
-            g.addEventListener('click', () => toggleZoneFilter(g.dataset.code));
+          wireZoneInteractions(document.querySelectorAll('#zonePositionChart .zone-bubble-clickable'), {
+            onToggle: toggleZoneFilter,
+            onSelectOnly: selectOnlyZoneFilter
           });
+          document.getElementById('zonePositionClear').disabled = selectedZones.length === 0;
         }
 
         function toggleZoneFilter(code) {
           const cur = activeFilters.zonaLanzamiento.selected;
-          activeFilters.zonaLanzamiento.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          activeFilters.zonaLanzamiento.selected = cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code];
+          renderStats();
+        }
+
+        function selectOnlyZoneFilter(code) {
+          activeFilters.zonaLanzamiento.selected = [code];
           renderStats();
         }
 
@@ -1202,14 +1263,21 @@
               ${inner}
             </svg>`;
 
-          document.querySelectorAll('#goalZoneChart .goal-cell-clickable').forEach((g) => {
-            g.addEventListener('click', () => toggleGoalZoneFilter(g.dataset.code));
+          wireZoneInteractions(document.querySelectorAll('#goalZoneChart .goal-cell-clickable'), {
+            onToggle: toggleGoalZoneFilter,
+            onSelectOnly: selectOnlyGoalZoneFilter
           });
+          document.getElementById('goalZoneClear').disabled = selectedZones.length === 0;
         }
 
         function toggleGoalZoneFilter(code) {
           const cur = activeFilters.zonaPorteria.selected;
-          activeFilters.zonaPorteria.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          activeFilters.zonaPorteria.selected = cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code];
+          renderStats();
+        }
+
+        function selectOnlyGoalZoneFilter(code) {
+          activeFilters.zonaPorteria.selected = [code];
           renderStats();
         }
 
@@ -1353,11 +1421,17 @@
               </div>
               <div class="zones-row">
                 <div class="panel">
-                  <div class="panel-title">Zona de lanzamiento rival</div>
+                  <div class="panel-title-row">
+                    <div class="panel-title">Zona de lanzamiento rival</div>
+                    <button type="button" class="zone-clear-btn" id="zonePositionClearGk" disabled>Borrar selección</button>
+                  </div>
                   <div id="zonePositionChartGk"></div>
                 </div>
                 <div class="panel">
-                  <div class="panel-title">Zona de portería</div>
+                  <div class="panel-title-row">
+                    <div class="panel-title">Zona de portería</div>
+                    <button type="button" class="zone-clear-btn" id="goalZoneClearGk" disabled>Borrar selección</button>
+                  </div>
                   <div id="goalZoneChartGk"></div>
                 </div>
               </div>
@@ -1484,6 +1558,15 @@
         // se activan solo al pulsar sobre su gráfico, sin desplegable propio.
         gkActiveFilters.zonaLanzamiento = { getValue: (r) => parseZoneCode(r[COL_POSITION]), selected: [] };
         gkActiveFilters.zonaPorteria = { getValue: (r) => GOAL_LABEL_TO_CODE[r[COL_GOAL]] || null, selected: [] };
+
+        document.getElementById('zonePositionClearGk').addEventListener('click', () => {
+          gkActiveFilters.zonaLanzamiento.selected = [];
+          renderGkStats();
+        });
+        document.getElementById('goalZoneClearGk').addEventListener('click', () => {
+          gkActiveFilters.zonaPorteria.selected = [];
+          renderGkStats();
+        });
 
         document.getElementById('filtersResetGk').addEventListener('click', () => {
           for (const key of Object.keys(gkActiveFilters)) {
@@ -1685,14 +1768,21 @@
               ${bubblesSvg}
             </svg>`;
 
-          document.querySelectorAll('#zonePositionChartGk .zone-bubble-clickable').forEach((g) => {
-            g.addEventListener('click', () => toggleGkZoneFilter(g.dataset.code));
+          wireZoneInteractions(document.querySelectorAll('#zonePositionChartGk .zone-bubble-clickable'), {
+            onToggle: toggleGkZoneFilter,
+            onSelectOnly: selectOnlyGkZoneFilter
           });
+          document.getElementById('zonePositionClearGk').disabled = selectedZones.length === 0;
         }
 
         function toggleGkZoneFilter(code) {
           const cur = gkActiveFilters.zonaLanzamiento.selected;
-          gkActiveFilters.zonaLanzamiento.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          gkActiveFilters.zonaLanzamiento.selected = cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code];
+          renderGkStats();
+        }
+
+        function selectOnlyGkZoneFilter(code) {
+          gkActiveFilters.zonaLanzamiento.selected = [code];
           renderGkStats();
         }
 
@@ -1776,14 +1866,21 @@
               ${inner}
             </svg>`;
 
-          document.querySelectorAll('#goalZoneChartGk .goal-cell-clickable').forEach((g) => {
-            g.addEventListener('click', () => toggleGkGoalZoneFilter(g.dataset.code));
+          wireZoneInteractions(document.querySelectorAll('#goalZoneChartGk .goal-cell-clickable'), {
+            onToggle: toggleGkGoalZoneFilter,
+            onSelectOnly: selectOnlyGkGoalZoneFilter
           });
+          document.getElementById('goalZoneClearGk').disabled = selectedZones.length === 0;
         }
 
         function toggleGkGoalZoneFilter(code) {
           const cur = gkActiveFilters.zonaPorteria.selected;
-          gkActiveFilters.zonaPorteria.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
+          gkActiveFilters.zonaPorteria.selected = cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code];
+          renderGkStats();
+        }
+
+        function selectOnlyGkGoalZoneFilter(code) {
+          gkActiveFilters.zonaPorteria.selected = [code];
           renderGkStats();
         }
 
