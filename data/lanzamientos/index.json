@@ -1,27 +1,11 @@
 [
   {
-    "id": "portero-ubu-san-pablo-burgos-j1",
-    "mode": "portero",
-    "team": "UBU SAN PABLO BURGOS",
-    "code": "J1",
-    "rowCount": 39,
-    "generatedAt": "2026-09-18T13:06:48.343Z"
-  },
-  {
     "id": "portero-balonmano-guadalajara-sin-codigo",
     "mode": "portero",
     "team": "BALONMANO GUADALAJARA",
     "code": "Sin código",
     "rowCount": 42,
     "generatedAt": "2026-09-19T07:24:37.789Z"
-  },
-  {
-    "id": "jugadores-ubu-san-pablo-burgos-j1",
-    "mode": "jugadores",
-    "team": "UBU SAN PABLO BURGOS",
-    "code": "J1",
-    "rowCount": 46,
-    "generatedAt": "2026-09-20T10:54:47.868Z"
   },
   {
     "id": "jugadores-ubu-san-pablo-burgos-j2",
@@ -38,5 +22,21 @@
     "code": "J1",
     "rowCount": 42,
     "generatedAt": "2026-09-20T10:56:59.401Z"
+  },
+  {
+    "id": "jugadores-ubu-san-pablo-burgos-j1",
+    "mode": "jugadores",
+    "team": "UBU SAN PABLO BURGOS",
+    "code": "J1",
+    "rowCount": 46,
+    "generatedAt": "2026-09-20T14:32:46.868Z"
+  },
+  {
+    "id": "portero-ubu-san-pablo-burgos-j1",
+    "mode": "portero",
+    "team": "UBU SAN PABLO BURGOS",
+    "code": "J1",
+    "rowCount": 39,
+    "generatedAt": "2026-09-20T14:32:46.871Z"
   }
 ]
