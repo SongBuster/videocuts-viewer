@@ -1,3 +1,18 @@
 [
-  
+  {
+    "id": "jugadores-balonmano-guadalajara-j1",
+    "mode": "jugadores",
+    "team": "BALONMANO GUADALAJARA",
+    "code": "J1",
+    "rowCount": 42,
+    "generatedAt": "2026-09-20T15:07:07.675Z"
+  },
+  {
+    "id": "portero-balonmano-guadalajara-j1",
+    "mode": "portero",
+    "team": "BALONMANO GUADALAJARA",
+    "code": "J1",
+    "rowCount": 42,
+    "generatedAt": "2026-09-20T15:07:07.677Z"
+  }
 ]
