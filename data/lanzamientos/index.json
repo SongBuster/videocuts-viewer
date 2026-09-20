@@ -30,5 +30,13 @@
     "code": "J1",
     "rowCount": 39,
     "generatedAt": "2026-09-20T15:09:13.286Z"
+  },
+  {
+    "id": "jugadores-ubu-san-pablo-burgos-j2",
+    "mode": "jugadores",
+    "team": "UBU SAN PABLO BURGOS",
+    "code": "J2",
+    "rowCount": 24,
+    "generatedAt": "2026-09-20T15:09:37.431Z"
   }
 ]
