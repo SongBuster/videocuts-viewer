@@ -37,6 +37,14 @@
     "team": "UBU SAN PABLO BURGOS",
     "code": "J2",
     "rowCount": 43,
-    "generatedAt": "2026-09-20T15:32:48.219Z"
+    "generatedAt": "2026-09-20T15:41:48.936Z"
+  },
+  {
+    "id": "portero-ubu-san-pablo-burgos-j2",
+    "mode": "portero",
+    "team": "UBU SAN PABLO BURGOS",
+    "code": "J2",
+    "rowCount": 6,
+    "generatedAt": "2026-09-20T15:41:48.936Z"
   }
 ]
