@@ -24,19 +24,19 @@
     "generatedAt": "2026-09-19T07:24:37.789Z"
   },
   {
-    "id": "jugadores-ubu-san-pablo-burgos-j2",
-    "mode": "jugadores",
-    "team": "UBU SAN PABLO BURGOS",
-    "code": "J2",
-    "rowCount": 22,
-    "generatedAt": "2026-09-20T07:28:09.528Z"
-  },
-  {
     "id": "jugadores-ubu-san-pablo-burgos-j1",
     "mode": "jugadores",
     "team": "UBU SAN PABLO BURGOS",
     "code": "J1",
     "rowCount": 46,
     "generatedAt": "2026-09-20T10:54:47.868Z"
+  },
+  {
+    "id": "jugadores-ubu-san-pablo-burgos-j2",
+    "mode": "jugadores",
+    "team": "UBU SAN PABLO BURGOS",
+    "code": "J2",
+    "rowCount": 24,
+    "generatedAt": "2026-09-20T10:55:48.137Z"
   }
 ]
