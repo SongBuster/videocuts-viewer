@@ -46,5 +46,13 @@
     "code": "J2",
     "rowCount": 40,
     "generatedAt": "2026-09-21T07:59:36.968Z"
+  },
+  {
+    "id": "jugadores-balonmano-guadalajara-j2",
+    "mode": "jugadores",
+    "team": "BALONMANO GUADALAJARA",
+    "code": "J2",
+    "rowCount": 26,
+    "generatedAt": "2026-09-21T15:48:40.289Z"
   }
 ]
