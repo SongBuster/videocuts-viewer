@@ -54,5 +54,13 @@
     "code": "J2",
     "rowCount": 26,
     "generatedAt": "2026-09-21T15:48:40.289Z"
+  },
+  {
+    "id": "jugadores-barca-atletic-j2",
+    "mode": "jugadores",
+    "team": "BARÇA ATLÈTIC",
+    "code": "J2",
+    "rowCount": 5,
+    "generatedAt": "2026-09-22T06:38:02.588Z"
   }
 ]
