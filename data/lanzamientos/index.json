@@ -48,14 +48,6 @@
     "generatedAt": "2026-09-21T07:59:36.968Z"
   },
   {
-    "id": "jugadores-barca-atletic-j2",
-    "mode": "jugadores",
-    "team": "BARÇA ATLÈTIC",
-    "code": "J2",
-    "rowCount": 5,
-    "generatedAt": "2026-09-22T10:17:57.610Z"
-  },
-  {
     "id": "jugadores-balonmano-guadalajara-j2",
     "mode": "jugadores",
     "team": "BALONMANO GUADALAJARA",
