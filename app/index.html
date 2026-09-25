@@ -15,7 +15,7 @@
   </header>
   <div class="home-wrap">
     <input type="search" id="teamSearch" class="team-search" placeholder="Buscar equipo…" hidden />
-    <div id="teams" class="match-grid"></div>
+    <div id="teams" class="channel-groups"></div>
   </div>
 
 <script type="module">
@@ -26,17 +26,31 @@
     return value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   }
 
+  function groupByChannel(teams) {
+    const map = new Map()
+    for (const t of teams) {
+      if (!map.has(t.channelId)) map.set(t.channelId, { channelName: t.channelName, teams: [] })
+      map.get(t.channelId).teams.push(t)
+    }
+    return [...map.values()].sort((a, b) => a.channelName.localeCompare(b.channelName))
+  }
+
   function renderTeams(el, teams) {
     if (teams.length === 0) {
       el.innerHTML = '<div class="empty-state">Ningún equipo coincide con la búsqueda.</div>'
       return
     }
-    el.innerHTML = teams.map((t) => `
-      <a class="match-card" href="canal.html?id=${encodeURIComponent(t.channelId)}&equipo=${encodeURIComponent(t.team)}">
-        <div class="name">${escapeHtml(t.team)}</div>
-        <div class="sub">${escapeHtml(t.channelName)}</div>
-        <div class="figures"><span><b>${t.matchCount}</b> partido${t.matchCount === 1 ? '' : 's'} analizado${t.matchCount === 1 ? '' : 's'}</span></div>
-      </a>`).join('')
+    el.innerHTML = groupByChannel(teams).map((g) => `
+      <section class="channel-group">
+        <h2 class="channel-title">${escapeHtml(g.channelName)}</h2>
+        <div class="match-grid">
+          ${g.teams.map((t) => `
+            <a class="match-card" href="canal.html?id=${encodeURIComponent(t.channelId)}&equipo=${encodeURIComponent(t.team)}">
+              <div class="name">${escapeHtml(t.team)}</div>
+              <div class="figures"><span><b>${t.matchCount}</b> partido${t.matchCount === 1 ? '' : 's'} analizado${t.matchCount === 1 ? '' : 's'}</span></div>
+            </a>`).join('')}
+        </div>
+      </section>`).join('')
   }
 
   const session = await requireSession()

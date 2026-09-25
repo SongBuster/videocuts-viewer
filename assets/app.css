@@ -35,6 +35,11 @@ button { font-family: inherit; }
 }
 .team-search::placeholder { color: #666; }
 .team-search:focus { outline: none; border-color: #3b82f6; }
+.channel-groups { display: flex; flex-direction: column; gap: 30px; }
+.channel-title {
+  font-size: 13px; font-weight: 600; color: #9ab8f0; letter-spacing: .03em; text-transform: uppercase;
+  margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid #2a2a2a;
+}
 .match-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
 .match-card {
   display: block; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px;
