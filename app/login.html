@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Iniciar sesión — VideoCuts</title>
+<link rel="stylesheet" href="../assets/app.css" />
+<style>
+  .auth-wrap { max-width: 340px; margin: 60px auto; padding: 0 20px; }
+  .auth-wrap h2 { font-size: 18px; margin-bottom: 4px; }
+  .auth-wrap p.hint { color: #888; font-size: 12px; margin: 0 0 20px; }
+  .auth-field { margin-bottom: 12px; }
+  .auth-field input {
+    width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 6px;
+    color: #e0e0e0; padding: 9px 11px; font-size: 13px; outline: none;
+  }
+  .auth-error { color: #ef4444; font-size: 12px; margin-bottom: 12px; }
+  .auth-actions { display: flex; align-items: center; gap: 14px; }
+  .auth-submit {
+    background: #3b82f6; color: #fff; border: none; border-radius: 6px;
+    padding: 8px 18px; font-size: 13px; cursor: pointer;
+  }
+  .auth-submit:disabled { opacity: .6; cursor: default; }
+  .auth-switch { background: none; border: none; color: #888; font-size: 12px; cursor: pointer; padding: 0; }
+  .auth-switch:hover { color: #ccc; }
+</style>
+</head>
+<body>
+  <header class="site-header">
+    <h1>📊 VideoCuts</h1>
+    <span class="meta">Estadísticas de tu equipo</span>
+  </header>
+
+  <div class="auth-wrap">
+    <h2 id="authTitle">Iniciar sesión</h2>
+    <p class="hint">Accede con la cuenta que te haya invitado, o crea una si es la primera vez.</p>
+    <form id="authForm">
+      <div class="auth-field">
+        <input type="email" id="email" placeholder="Correo electrónico" autocomplete="email" required />
+      </div>
+      <div class="auth-field">
+        <input type="password" id="password" placeholder="Contraseña" autocomplete="current-password" required />
+      </div>
+      <div class="auth-error" id="authError" hidden></div>
+      <div class="auth-actions">
+        <button type="submit" class="auth-submit" id="authSubmit">Iniciar sesión</button>
+        <button type="button" class="auth-switch" id="authSwitch">¿No tienes cuenta? Créala</button>
+      </div>
+    </form>
+  </div>
+
+<script type="module">
+  import { getSession, login, signUp } from '../assets/supabase.js'
+
+  const params = new URLSearchParams(location.search)
+  const next = params.get('next') || 'index.html'
+
+  const existing = await getSession()
+  if (existing) { location.href = next; }
+
+  let mode = 'login'
+  const title = document.getElementById('authTitle')
+  const submit = document.getElementById('authSubmit')
+  const switchBtn = document.getElementById('authSwitch')
+  const errorEl = document.getElementById('authError')
+
+  switchBtn.addEventListener('click', () => {
+    mode = mode === 'login' ? 'signUp' : 'login'
+    title.textContent = mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'
+    submit.textContent = mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'
+    switchBtn.textContent = mode === 'login' ? '¿No tienes cuenta? Créala' : '¿Ya tienes cuenta? Inicia sesión'
+    errorEl.hidden = true
+  })
+
+  document.getElementById('authForm').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    errorEl.hidden = true
+    submit.disabled = true
+    const email = document.getElementById('email').value.trim()
+    const password = document.getElementById('password').value
+    try {
+      if (mode === 'login') await login(email, password)
+      else await signUp(email, password)
+      location.href = next
+    } catch (err) {
+      errorEl.textContent = err.message
+      errorEl.hidden = false
+      submit.disabled = false
+    }
+  })
+</script>
+</body>
+</html>

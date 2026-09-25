@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Invitación — VideoCuts</title>
+<link rel="stylesheet" href="../assets/app.css" />
+</head>
+<body>
+  <header class="site-header">
+    <h1>📊 VideoCuts</h1>
+  </header>
+  <div class="home-wrap">
+    <div id="status" class="empty-state">Comprobando invitación…</div>
+  </div>
+
+<script type="module">
+  import { requireSession, redeemInvite } from '../assets/supabase.js'
+
+  const statusEl = document.getElementById('status')
+  const token = new URLSearchParams(location.search).get('token')
+
+  if (!token) {
+    statusEl.textContent = 'Falta el token de invitación en el enlace.'
+  } else {
+    const session = await requireSession()
+    if (session) {
+      try {
+        await redeemInvite(token)
+        statusEl.textContent = 'Invitación aceptada — entrando…'
+        location.href = 'index.html'
+      } catch (err) {
+        statusEl.textContent = err.message
+      }
+    }
+  }
+</script>
+</body>
+</html>

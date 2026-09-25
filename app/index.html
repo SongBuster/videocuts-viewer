@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mis equipos — VideoCuts</title>
+<link rel="stylesheet" href="../assets/app.css" />
+</head>
+<body>
+  <header class="site-header">
+    <h1>📊 VideoCuts</h1>
+    <span class="meta" id="userEmail"></span>
+    <span class="spacer"></span>
+    <button type="button" class="nav-link" id="logoutBtn" style="cursor:pointer;border:1px solid #2a3a52;">Cerrar sesión</button>
+  </header>
+  <div class="home-wrap">
+    <p class="intro">Equipos a los que tienes acceso. Si te falta alguno, pide al publicador un enlace de invitación.</p>
+    <div id="teams" class="match-grid"></div>
+  </div>
+
+<script type="module">
+  import { escapeHtml } from '../assets/app.js'
+  import { requireSession, getAccessibleTeams, logout } from '../assets/supabase.js'
+
+  const session = await requireSession()
+  if (session) {
+    document.getElementById('userEmail').textContent = session.user.email
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await logout()
+      location.href = 'login.html'
+    })
+
+    const el = document.getElementById('teams')
+    try {
+      const teams = await getAccessibleTeams()
+      if (teams.length === 0) {
+        el.innerHTML = '<div class="empty-state">Todavía no tienes acceso a ningún equipo. Pide al publicador un enlace de invitación.</div>'
+      } else {
+        el.innerHTML = teams.map((t) => `
+          <a class="match-card" href="canal.html?id=${encodeURIComponent(t.channelId)}&equipo=${encodeURIComponent(t.team)}">
+            <div class="name">${escapeHtml(t.team)}</div>
+            <div class="sub">${escapeHtml(t.channelName)}</div>
+          </a>`).join('')
+      }
+    } catch (err) {
+      el.innerHTML = `<div class="empty-state">No se han podido cargar tus equipos. ${escapeHtml(err.message)}</div>`
+    }
+  }
+</script>
+</body>
+</html>
