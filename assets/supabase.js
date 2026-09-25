@@ -50,7 +50,9 @@ export async function requireSession() {
 // Todos los equipos accesibles al usuario logueado, agrupados por canal —
 // una tarjeta por (canal, equipo), como ya hacía la portada pública con
 // (equipo) solo. Un canal puede tener más de un equipo (p.ej. un canal por
-// competición con varios rivales dentro).
+// competición con varios rivales dentro). matchCount cuenta partidos
+// (códigos de jornada) distintos, no filas — jugadores y portero del mismo
+// partido cuentan una sola vez.
 export async function getAccessibleTeams() {
   const { data: channels, error: chErr } = await supabase.from('channels').select('id, name')
   if (chErr) throw new Error(chErr.message)
@@ -59,19 +61,24 @@ export async function getAccessibleTeams() {
   const channelIds = channels.map((c) => c.id)
   const { data: rows, error: dsErr } = await supabase
     .from('datasets')
-    .select('channel_id, team')
+    .select('channel_id, team, code')
     .in('channel_id', channelIds)
   if (dsErr) throw new Error(dsErr.message)
 
   const channelById = Object.fromEntries(channels.map((c) => [c.id, c.name]))
-  const seen = new Set()
-  const teams = []
+  const byTeam = new Map()
   for (const row of rows ?? []) {
     const key = `${row.channel_id}::${row.team}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    teams.push({ channelId: row.channel_id, channelName: channelById[row.channel_id] ?? '?', team: row.team })
+    let entry = byTeam.get(key)
+    if (!entry) {
+      entry = { channelId: row.channel_id, channelName: channelById[row.channel_id] ?? '?', team: row.team, codes: new Set() }
+      byTeam.set(key, entry)
+    }
+    entry.codes.add(row.code)
   }
+  const teams = [...byTeam.values()].map((t) => ({
+    channelId: t.channelId, channelName: t.channelName, team: t.team, matchCount: t.codes.size
+  }))
   teams.sort((a, b) => a.team.localeCompare(b.team))
   return teams
 }

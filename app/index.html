@@ -14,13 +14,30 @@
     <button type="button" class="nav-link" id="logoutBtn" style="cursor:pointer;border:1px solid #2a3a52;">Cerrar sesión</button>
   </header>
   <div class="home-wrap">
-    <p class="intro">Equipos a los que tienes acceso. Si te falta alguno, pide al publicador un enlace de invitación.</p>
+    <input type="search" id="teamSearch" class="team-search" placeholder="Buscar equipo…" hidden />
     <div id="teams" class="match-grid"></div>
   </div>
 
 <script type="module">
   import { escapeHtml } from '../assets/app.js'
   import { requireSession, getAccessibleTeams, logout } from '../assets/supabase.js'
+
+  function normalize(value) {
+    return value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  }
+
+  function renderTeams(el, teams) {
+    if (teams.length === 0) {
+      el.innerHTML = '<div class="empty-state">Ningún equipo coincide con la búsqueda.</div>'
+      return
+    }
+    el.innerHTML = teams.map((t) => `
+      <a class="match-card" href="canal.html?id=${encodeURIComponent(t.channelId)}&equipo=${encodeURIComponent(t.team)}">
+        <div class="name">${escapeHtml(t.team)}</div>
+        <div class="sub">${escapeHtml(t.channelName)}</div>
+        <div class="figures"><span><b>${t.matchCount}</b> partido${t.matchCount === 1 ? '' : 's'} analizado${t.matchCount === 1 ? '' : 's'}</span></div>
+      </a>`).join('')
+  }
 
   const session = await requireSession()
   if (session) {
@@ -31,16 +48,19 @@
     })
 
     const el = document.getElementById('teams')
+    const searchInput = document.getElementById('teamSearch')
     try {
       const teams = await getAccessibleTeams()
       if (teams.length === 0) {
         el.innerHTML = '<div class="empty-state">Todavía no tienes acceso a ningún equipo. Pide al publicador un enlace de invitación.</div>'
       } else {
-        el.innerHTML = teams.map((t) => `
-          <a class="match-card" href="canal.html?id=${encodeURIComponent(t.channelId)}&equipo=${encodeURIComponent(t.team)}">
-            <div class="name">${escapeHtml(t.team)}</div>
-            <div class="sub">${escapeHtml(t.channelName)}</div>
-          </a>`).join('')
+        searchInput.hidden = false
+        renderTeams(el, teams)
+        searchInput.addEventListener('input', () => {
+          const q = normalize(searchInput.value.trim())
+          const filtered = q ? teams.filter((t) => normalize(t.team).includes(q)) : teams
+          renderTeams(el, filtered)
+        })
       }
     } catch (err) {
       el.innerHTML = `<div class="empty-state">No se han podido cargar tus equipos. ${escapeHtml(err.message)}</div>`
