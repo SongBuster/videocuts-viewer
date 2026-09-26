@@ -30,9 +30,10 @@
   .dash-filters-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .dash-filters-title { color: #aaa; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
   .filters-reset {
-    background: none; border: none; color: var(--accent-text); font-size: 11px; cursor: pointer; padding: 2px 0;
+    background: none; border: 1px solid var(--border); color: var(--text-secondary); font-size: 11px;
+    cursor: pointer; padding: 5px 12px; border-radius: 999px; font-family: inherit;
   }
-  .filters-reset:hover { color: var(--accent-text); text-decoration: underline; }
+  .filters-reset:hover { border-color: var(--accent); color: #fff; }
   .filters-col { display: flex; flex-direction: column; gap: 10px; }
   .filters-col .dd-filter { display: block; }
   .filters-col .dd-filter-btn { width: 100%; box-sizing: border-box; justify-content: space-between; }
@@ -75,6 +76,15 @@
   @media (max-width: 900px) {
     .jug-layout { grid-template-columns: minmax(0,1fr); }
   }
+
+  /* ── Filtros "inmediatos" (Jornada/Resultado/Modalidad): chips visibles
+     de un vistazo, sin abrir nada — reutiliza .chip-group/.chip de
+     app.css. Los de más variedad (Fase, Mano, Tipo...) se quedan como
+     desplegables, agrupados debajo tras el divisor. ── */
+  .filters-tier { display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 14px; }
+  .chip-group > div { display: contents; }
+  .chip-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: middle; }
+  .filters-divider { height: 1px; background: #2a2a2a; margin: 0 0 14px; }
 </style>
 </head>
 <body>
@@ -636,6 +646,22 @@
                 </div>
               </div>
               <div class="panel-body">
+                <div class="filters-tier">
+                  <div class="chip-group">
+                    <span class="group-label">Jornada</span>
+                    <div id="jornadaChips"></div>
+                  </div>
+                  <div class="chip-group">
+                    <span class="group-label">Resultado</span>
+                    <div id="resultadoChips"></div>
+                  </div>
+                  <div class="chip-group" id="modalidadGroup" hidden>
+                    <span class="group-label">Modalidad</span>
+                    <div id="modalidadChips"></div>
+                  </div>
+                </div>
+                <div class="filters-divider"></div>
+                <div class="dash-filters-title" style="margin-bottom:8px;">Detalle del lanzamiento</div>
                 <div class="filters-row" id="filtersCol"></div>
               </div>
             </div>
@@ -718,19 +744,41 @@
         // aquí) — para poder sincronizarlos al pulsar "Limpiar todo".
         const filterComponents = {} // key -> { setSelected }
 
-        function addFilter(key, fieldLabel, column) {
-          const values = [...new Set(records.map((r) => r[column]).filter(Boolean))].sort();
-          const filter = createDropdownFilter({
-            fieldLabel,
-            options: values.map((v) => ({ value: v, label: v })),
-            onChange: (selected) => { activeFilters[key].selected = selected; renderStats(); }
-          });
-          activeFilters[key] = { getValue: (r) => r[column], selected: [] };
-          filterComponents[key] = filter;
-          filtersCol.appendChild(filter.el);
+        // Filtros "inmediatos" en forma de chips (Jornada/Resultado/
+        // Modalidad): mismo criterio de selección que el resto
+        // (selected=[] es "todos", el array acumula valores marcados) pero
+        // sin desplegable — se ven y se pulsan de un vistazo. El resto de
+        // filtros (más variados) se quedan como desplegable.
+        function toggleArrayFilter(key, value) {
+          const cur = activeFilters[key].selected;
+          activeFilters[key].selected = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value];
+          renderStats();
         }
 
-        addFilter('partido', 'Partido', COL_CODE);
+        function createChipGroup(containerId, key, options) {
+          const el = document.getElementById(containerId);
+          function render() {
+            const selected = activeFilters[key].selected;
+            el.innerHTML = options.map((o) => `
+              <button type="button" class="chip ${selected.includes(o.value) ? 'active' : ''}" data-value="${escapeHtml(o.value)}">${o.dot ? `<span class="chip-dot" style="background:${o.dot}"></span>` : ''}${escapeHtml(o.label)}</button>`).join('');
+            el.querySelectorAll('.chip').forEach((btn) => {
+              btn.addEventListener('click', () => { toggleArrayFilter(key, btn.dataset.value); render(); });
+            });
+          }
+          render();
+          return { setSelected: render };
+        }
+
+        const jornadaValues = [...new Set(records.map((r) => r[COL_CODE]).filter(Boolean))].sort();
+        activeFilters.partido = { getValue: (r) => r[COL_CODE], selected: [] };
+        filterComponents.partido = createChipGroup('jornadaChips', 'partido', jornadaValues.map((v) => ({ value: v, label: v })));
+
+        activeFilters.resultado = { getValue: (r) => r['Resultado'], selected: [] };
+        filterComponents.resultado = createChipGroup('resultadoChips', 'resultado', [
+          { value: 'Gol', label: 'Gol', dot: '#0ca30c' },
+          { value: 'Parada', label: 'Parada', dot: '#3987e5' },
+          { value: 'Fuera', label: 'Fuera / palo', dot: '#d95926' }
+        ]);
 
         const timeFilter = createTreeDropdownFilter({
           fieldLabel: 'Tiempo de juego',
@@ -832,15 +880,9 @@
           .sort((a, b) => b[1] - a[1])
           .map(([value]) => ({ value, label: EVENT_TYPE_LABELS[value] || value }));
         if (eventTypeOptions.length > 1) {
-          const eventTypeFilter = createDropdownFilter({
-            fieldLabel: 'Modalidad',
-            options: eventTypeOptions,
-            showSearch: false,
-            onChange: (selected) => { activeFilters.tipoEvento.selected = selected; renderStats(); }
-          });
           activeFilters.tipoEvento = { getValue: (r) => r[COL_EVENT_TYPE], selected: [] };
-          filterComponents.tipoEvento = eventTypeFilter;
-          filtersCol.appendChild(eventTypeFilter.el);
+          document.getElementById('modalidadGroup').hidden = false;
+          filterComponents.tipoEvento = createChipGroup('modalidadChips', 'tipoEvento', eventTypeOptions);
         }
 
         // Filtros simples por columna (sin buscador, ordenados por
@@ -868,6 +910,22 @@
 
         addSimpleFilter('mano', 'Mano', 'Mano');
         addSimpleFilter('tipoLanzamiento', 'Tipo de lanzamiento', 'Tipo de lanzamiento');
+        // "Con amago" es un campo tipo casilla en la plantilla: solo se
+        // guarda "Sí" cuando está marcado, en blanco si no — nunca hay un
+        // segundo valor real "No" que contar, así que addSimpleFilter (que
+        // exige >=2 valores distintos) nunca lo mostraría. Se construye
+        // aparte, ofreciendo "No" como el hueco en blanco.
+        if (records.some((r) => r['Con amago'])) {
+          const amagoFilter = createDropdownFilter({
+            fieldLabel: 'Con amago',
+            options: [{ value: 'Sí', label: 'Sí' }, { value: '', label: 'No' }],
+            showSearch: false,
+            onChange: (selected) => { activeFilters.amago.selected = selected; renderStats(); }
+          });
+          activeFilters.amago = { getValue: (r) => r['Con amago'] || '', selected: [] };
+          filterComponents.amago = amagoFilter;
+          filtersCol.appendChild(amagoFilter.el);
+        }
 
         // Zona de lanzamiento y zona de portería no tienen desplegable propio
         // en la columna de filtros: se activan solo al pulsar sobre el
