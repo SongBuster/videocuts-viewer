@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Rival — VideoCuts</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" />
 <link rel="stylesheet" href="assets/app.css" />
 <style>
   .tabs { display: flex; gap: 6px; padding: 0 20px; border-bottom: 1px solid #2a2a2a; }
@@ -11,7 +12,7 @@
     background: transparent; border: none; border-bottom: 2px solid transparent;
     color: #888; padding: 12px 6px; font-size: 13px; cursor: pointer;
   }
-  .tab-btn.active { color: #fff; border-bottom-color: #3b82f6; }
+  .tab-btn.active { color: #fff; border-bottom-color: #9085e9; }
   .tab-panel { min-height: 0; }
 
   /* ── Filtros (izquierda) + visualizadores (derecha) ── */
@@ -29,9 +30,9 @@
   .dash-filters-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .dash-filters-title { color: #aaa; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
   .filters-reset {
-    background: none; border: none; color: #6a9be0; font-size: 11px; cursor: pointer; padding: 2px 0;
+    background: none; border: none; color: var(--accent-text); font-size: 11px; cursor: pointer; padding: 2px 0;
   }
-  .filters-reset:hover { color: #9ab8f0; text-decoration: underline; }
+  .filters-reset:hover { color: var(--accent-text); text-decoration: underline; }
   .filters-col { display: flex; flex-direction: column; gap: 10px; }
   .filters-col .dd-filter { display: block; }
   .filters-col .dd-filter-btn { width: 100%; box-sizing: border-box; justify-content: space-between; }
@@ -321,7 +322,7 @@
 
     function cell(code, x, y, w, h) {
       const isHit = code === highlightCode;
-      const fill = isHit ? '#3b82f6' : '#2a2a2a';
+      const fill = isHit ? '#9085e9' : '#2a2a2a';
       const stroke = isHit ? '#fff' : '#444';
       return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${isHit ? 2 : 1}" />`;
     }
@@ -625,7 +626,7 @@
               <div class="panel" id="playerComparisonPanel" hidden>
                 <div class="panel-title">Comparativa de jugadores</div>
                 <div class="chart-legend">
-                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#3b82f6"></span>Lanzamientos</span>
+                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#9085e9"></span>Lanzamientos</span>
                   <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
                 </div>
                 <div id="playerComparisonChart"></div>
@@ -634,7 +635,7 @@
               <div class="panel" id="positionEfficacyPanel" hidden>
                 <div class="panel-title">Efectividad por puesto</div>
                 <div class="chart-legend">
-                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#3b82f6"></span>Lanzamientos</span>
+                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#9085e9"></span>Lanzamientos</span>
                   <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
                 </div>
                 <div id="positionEfficacyChart"></div>
@@ -999,7 +1000,7 @@
           const barW = Math.min(28, groupW * 0.32);
           const gap = 2;
           const axisMax = niceMax(Math.max(...items.map((p) => p.lanzamientos)));
-          const COLOR_LANZ = '#3b82f6';
+          const COLOR_LANZ = '#9085e9';
           const COLOR_GOL = '#d95926';
           const TEXT_MUTED = '#898781';
           const TEXT_SECONDARY = '#c3c2b7';
@@ -1063,7 +1064,7 @@
           const barW = Math.min(24, groupW * 0.32);
           const gap = 2;
           const axisMax = niceMax(Math.max(...players.map((p) => p.lanzamientos)));
-          const COLOR_LANZ = '#3b82f6';
+          const COLOR_LANZ = '#9085e9';
           const COLOR_GOL = '#d95926';
           const TEXT_MUTED = '#898781';
           const TEXT_SECONDARY = '#c3c2b7';

@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Rival — VideoCuts</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" />
 <link rel="stylesheet" href="../assets/app.css" />
 <style>
   .tabs { display: flex; gap: 6px; padding: 0 20px; border-bottom: 1px solid #2a2a2a; }
@@ -11,7 +12,7 @@
     background: transparent; border: none; border-bottom: 2px solid transparent;
     color: #888; padding: 12px 6px; font-size: 13px; cursor: pointer;
   }
-  .tab-btn.active { color: #fff; border-bottom-color: #3b82f6; }
+  .tab-btn.active { color: #fff; border-bottom-color: #9085e9; }
   .tab-panel { min-height: 0; }
 
   /* ── Filtros (izquierda) + visualizadores (derecha) ── */
@@ -29,9 +30,9 @@
   .dash-filters-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .dash-filters-title { color: #aaa; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
   .filters-reset {
-    background: none; border: none; color: #6a9be0; font-size: 11px; cursor: pointer; padding: 2px 0;
+    background: none; border: none; color: var(--accent-text); font-size: 11px; cursor: pointer; padding: 2px 0;
   }
-  .filters-reset:hover { color: #9ab8f0; text-decoration: underline; }
+  .filters-reset:hover { color: var(--accent-text); text-decoration: underline; }
   .filters-col { display: flex; flex-direction: column; gap: 10px; }
   .filters-col .dd-filter { display: block; }
   .filters-col .dd-filter-btn { width: 100%; box-sizing: border-box; justify-content: space-between; }
@@ -138,11 +139,6 @@
   const POSITION_LABELS = {
     EI: 'Extremo izquierdo', LI: 'Lateral izquierdo', PI: 'Pivote', PT: 'Portero',
     CT: 'Central', LD: 'Lateral derecho', ED: 'Extremo derecho'
-  }
-  // Para el eje X del gráfico de puesto: si no cabe el nombre completo, se
-  // prueba una abreviatura antes de caer al código de dos letras.
-  const POSITION_LABELS_SHORT = {
-    EI: 'Ext Izq', LI: 'Lat Izq', PI: 'Pivote', PT: 'Portero', CT: 'Central', LD: 'Lat Der', ED: 'Ext Der'
   }
   // El CSV trae el nombre completo ("Extremo izquierdo"), no el código — el
   // desplegable de la plantilla exporta la etiqueta, igual que "Mano". Un
@@ -322,7 +318,7 @@
 
     function cell(code, x, y, w, h) {
       const isHit = code === highlightCode;
-      const fill = isHit ? '#3b82f6' : '#2a2a2a';
+      const fill = isHit ? '#9085e9' : '#2a2a2a';
       const stroke = isHit ? '#fff' : '#444';
       return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${isHit ? 2 : 1}" />`;
     }
@@ -611,6 +607,11 @@
         const hasPuesto = records.some((r) => r[COL_PUESTO]);
 
         panels.jugadores.innerHTML = `
+          ${hasPuesto ? `
+          <section aria-label="Selección de puesto" style="padding: 16px 20px 0;">
+            <div class="dash-filters-title" style="margin-bottom:8px;">Puesto del lanzador</div>
+            <div class="position-select" id="positionSelect"></div>
+          </section>` : ''}
           <button type="button" class="filters-toggle" id="filtersToggle">☰ Filtros</button>
           <div class="dash-layout">
             <aside class="dash-filters" id="dashFilters">
@@ -622,49 +623,67 @@
             </aside>
             <main class="dash-main">
               <div class="panel stat-headline" id="statHeadline"></div>
-              <div class="panel" id="playerComparisonPanel" hidden>
-                <div class="panel-title">Comparativa de jugadores</div>
-                <div class="chart-legend">
-                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#3b82f6"></span>Lanzamientos</span>
-                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
+              <div class="panel" id="playerComparisonPanel" data-collapsible hidden>
+                <div class="panel-title-row">
+                  <div class="panel-title">Comparativa de jugadores</div>
+                  <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
                 </div>
-                <div id="playerComparisonChart"></div>
+                <div class="panel-body">
+                  <div class="chart-legend">
+                    <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:var(--accent)"></span>Lanzamientos</span>
+                    <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
+                  </div>
+                  <div id="playerComparisonChart"></div>
+                </div>
               </div>
-              ${hasPuesto ? `
-              <div class="panel" id="positionEfficacyPanel" hidden>
-                <div class="panel-title">Efectividad por puesto</div>
-                <div class="chart-legend">
-                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#3b82f6"></span>Lanzamientos</span>
-                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
-                </div>
-                <div id="positionEfficacyChart"></div>
-              </div>` : ''}
               <div class="zones-row">
-                <div class="panel">
+                <div class="panel" data-collapsible>
                   <div class="panel-title-row">
                     <div class="panel-title">Zona de lanzamiento</div>
-                    <button type="button" class="zone-clear-btn" id="zonePositionClear" disabled>Borrar selección</button>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <button type="button" class="zone-clear-btn" id="zonePositionClear" disabled>Borrar selección</button>
+                      <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                    </div>
                   </div>
-                  <div id="zonePositionChart"></div>
+                  <div class="panel-body">
+                    <div id="zonePositionChart"></div>
+                  </div>
                 </div>
-                <div class="panel">
+                <div class="panel" data-collapsible>
                   <div class="panel-title-row">
                     <div class="panel-title">Zona de portería</div>
-                    <button type="button" class="zone-clear-btn" id="goalZoneClear" disabled>Borrar selección</button>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <button type="button" class="zone-clear-btn" id="goalZoneClear" disabled>Borrar selección</button>
+                      <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                    </div>
                   </div>
-                  <div id="goalZoneChart"></div>
+                  <div class="panel-body">
+                    <div id="goalZoneChart"></div>
+                  </div>
                 </div>
               </div>
-              <div class="panel" id="detailTablePanel" hidden>
-                <div class="panel-title">Detalle de lanzamientos</div>
-                <div class="detail-table-wrap">
-                  <table class="detail-table" id="detailTable"></table>
+              <div class="panel" id="detailTablePanel" data-collapsible hidden>
+                <div class="panel-title-row">
+                  <div class="panel-title">Detalle de lanzamientos</div>
+                  <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                </div>
+                <div class="panel-body">
+                  <div class="detail-table-wrap">
+                    <table class="detail-table" id="detailTable"></table>
+                  </div>
                 </div>
               </div>
             </main>
           </div>`;
 
         setupFiltersToggle(document.getElementById('filtersToggle'), document.getElementById('dashFilters'));
+
+        // Secciones colapsables (sobre todo útil en móvil, para no obligar a
+        // hacer tanto scroll por una sección que no interesa ahora mismo).
+        document.querySelectorAll('#tab-jugadores .panel[data-collapsible]').forEach((panel) => {
+          const btn = panel.querySelector('.panel-collapse-btn');
+          btn.addEventListener('click', () => panel.toggleAttribute('data-collapsed'));
+        });
 
         const filtersCol = document.getElementById('filtersCol');
         // Cada filtro registra cómo sacar "su" valor de un registro
@@ -889,8 +908,41 @@
           renderPlayerComparison(filteredExcept('jugador'));
           renderZonePositionChart(filteredExcept('zonaLanzamiento'));
           renderGoalZoneChart(filteredExcept('zonaPorteria'));
-          if (hasPuesto) renderPositionEfficacyChart(filteredExcept('puesto'));
+          if (hasPuesto) renderPositionSelect(filteredExcept('puesto'));
           renderDetailTable(filtered);
+        }
+
+        // ── Selector de puesto: navegación principal (sustituye al antiguo
+        // gráfico "Efectividad por puesto" — misma agregación, pero como
+        // tarjetas grandes arriba del todo en vez de una barra más entre
+        // otras). Sigue actuando como filtro clicable vía togglePuestoFilter,
+        // ya usado también por el detalle de jugador. No incluye "Portero"
+        // (PT): un portero prácticamente no lanza.
+        function renderPositionSelect(filtered) {
+          const byPosition = new Map();
+          for (const r of filtered) {
+            const code = POSITION_LABEL_TO_CODE[r[COL_PUESTO]];
+            if (!code) continue;
+            const entry = byPosition.get(code) || { lanzamientos: 0, goles: 0 };
+            entry.lanzamientos++;
+            if (/gol/i.test(r['Resultado'] || '')) entry.goles++;
+            byPosition.set(code, entry);
+          }
+          const selected = activeFilters.puesto.selected;
+          document.getElementById('positionSelect').innerHTML = POSITION_ORDER
+            .filter((code) => code !== 'PT')
+            .map((code) => {
+              const data = byPosition.get(code) || { lanzamientos: 0, goles: 0 };
+              const eff = data.lanzamientos ? Math.round((data.goles / data.lanzamientos) * 100) : 0;
+              const isActive = selected.includes(code);
+              return `<button type="button" class="pos-card ${isActive ? 'active' : ''}" data-code="${code}">
+                <div class="pos-name">${POSITION_LABELS[code]}</div>
+                <div class="pos-figures">${data.lanzamientos} lanz. · ${eff}% efic.</div>
+              </button>`;
+            }).join('');
+          document.querySelectorAll('#positionSelect .pos-card').forEach((btn) => {
+            btn.addEventListener('click', () => togglePuestoFilter(btn.dataset.code));
+          });
         }
 
         // ── Comparativa de jugadores: siempre visible (actúa también como
@@ -942,115 +994,10 @@
           renderStats();
         }
 
-        // ── Efectividad por puesto: mismo formato que la comparativa de
-        // jugadores (columnas lanzamientos/goles + etiqueta), pero agrupado
-        // por puesto y en el orden fijo de la pista (no por frecuencia).
-        // También actúa como filtro clicable, igual que el resto.
-        function renderPositionEfficacyChart(filtered) {
-          const panel = document.getElementById('positionEfficacyPanel');
-          const byPosition = new Map();
-          for (const r of filtered) {
-            const code = POSITION_LABEL_TO_CODE[r[COL_PUESTO]];
-            if (!code) continue;
-            const entry = byPosition.get(code) || { lanzamientos: 0, goles: 0 };
-            entry.lanzamientos++;
-            if (/gol/i.test(r['Resultado'] || '')) entry.goles++;
-            byPosition.set(code, entry);
-          }
-
-          const items = POSITION_ORDER
-            .filter((code) => (byPosition.get(code)?.lanzamientos ?? 0) > 0)
-            .map((code) => {
-              const { lanzamientos, goles } = byPosition.get(code);
-              return {
-                code,
-                fullLabel: POSITION_LABELS[code],
-                shortLabel: POSITION_LABELS_SHORT[code],
-                lanzamientos,
-                goles,
-                efectividad: Math.round((goles / lanzamientos) * 100)
-              };
-            })
-            .sort((a, b) => b.lanzamientos - a.lanzamientos);
-
-          if (items.length === 0) { panel.hidden = true; return; }
-          panel.hidden = false;
-
-          document.getElementById('positionEfficacyChart').innerHTML = buildPositionEfficacySVG(items);
-
-          document.querySelectorAll('#positionEfficacyChart .position-bar-group').forEach((g) => {
-            g.addEventListener('click', () => togglePuestoFilter(g.dataset.code));
-          });
-        }
-
         function togglePuestoFilter(code) {
           const cur = activeFilters.puesto.selected;
           activeFilters.puesto.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
           renderStats();
-        }
-
-        function buildPositionEfficacySVG(items) {
-          const W = 800, H = 260;
-          const marginTop = 26, marginBottom = 34, marginLeft = 30, marginRight = 10;
-          const plotW = W - marginLeft - marginRight;
-          const plotH = H - marginTop - marginBottom;
-          const n = items.length;
-          const groupW = plotW / n;
-          const barW = Math.min(28, groupW * 0.32);
-          const gap = 2;
-          const axisMax = niceMax(Math.max(...items.map((p) => p.lanzamientos)));
-          const COLOR_LANZ = '#3b82f6';
-          const COLOR_GOL = '#d95926';
-          const TEXT_MUTED = '#898781';
-          const TEXT_SECONDARY = '#c3c2b7';
-          const GRID = '#2c2c2a';
-          const AXIS = '#383835';
-          const selectedPositions = activeFilters.puesto.selected;
-
-          let gridSvg = '';
-          for (let v = 0; v <= axisMax; v += 5) {
-            const y = marginTop + plotH - (v / axisMax) * plotH;
-            gridSvg += `<line x1="${marginLeft}" y1="${y}" x2="${W - marginRight}" y2="${y}" stroke="${v === 0 ? AXIS : GRID}" stroke-width="1" />`;
-            gridSvg += `<text x="${marginLeft - 6}" y="${y}" text-anchor="end" dominant-baseline="middle" fill="${TEXT_MUTED}" font-size="10">${v}</text>`;
-          }
-
-          let groupsSvg = '';
-          items.forEach((p, i) => {
-            const centerX = marginLeft + i * groupW + groupW / 2;
-            const groupX = marginLeft + i * groupW;
-            const lanzH = (p.lanzamientos / axisMax) * plotH;
-            const golH = (p.goles / axisMax) * plotH;
-            const lanzY = marginTop + plotH - lanzH;
-            const golY = marginTop + plotH - golH;
-            const lanzX = centerX - barW - gap / 2;
-            const golX = centerX + gap / 2;
-
-            const isSelected = selectedPositions.includes(p.code);
-            const isDimmed = selectedPositions.length > 0 && !isSelected;
-            const highlight = isSelected ? ` stroke="#fff" stroke-width="1.5"` : '';
-
-            const topY = Math.min(lanzY, golY);
-
-            // Nombre completo si cabe, si no una abreviatura, si tampoco el código.
-            const CHAR_W = 5.8;
-            const fitsFull = p.fullLabel.length * CHAR_W <= groupW - 4;
-            const fitsShort = p.shortLabel.length * CHAR_W <= groupW - 4;
-            const xLabel = fitsFull ? p.fullLabel : fitsShort ? p.shortLabel : p.code;
-
-            groupsSvg += `
-              <g class="position-bar-group" data-code="${p.code}" opacity="${isDimmed ? 0.35 : 1}">
-                <rect x="${groupX}" y="0" width="${groupW}" height="${H}" fill="transparent" />
-                <rect x="${lanzX}" y="${lanzY}" width="${barW}" height="${Math.max(0, lanzH)}" rx="4" fill="${COLOR_LANZ}"${highlight}><title>${escapeHtml(p.fullLabel)} — Lanzamientos: ${p.lanzamientos}</title></rect>
-                <rect x="${golX}" y="${golY}" width="${barW}" height="${Math.max(0, golH)}" rx="4" fill="${COLOR_GOL}"${highlight}><title>${escapeHtml(p.fullLabel)} — Goles: ${p.goles}</title></rect>
-                <text x="${centerX}" y="${Math.max(marginTop - 8, topY - 6)}" text-anchor="middle" fill="${TEXT_SECONDARY}" font-size="10" style="pointer-events:none">${p.goles}/${p.lanzamientos} (${p.efectividad}%)</text>
-                <text x="${centerX}" y="${marginTop + plotH + 15}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="10" style="pointer-events:none">${escapeHtml(xLabel)}</text>
-              </g>`;
-          });
-
-          return `<svg viewBox="0 0 ${W} ${H}" class="player-chart-svg" role="img" aria-label="Efectividad por puesto: lanzamientos y goles">
-            ${gridSvg}
-            ${groupsSvg}
-          </svg>`;
         }
 
         function buildPlayerComparisonSVG(players) {
@@ -1063,7 +1010,7 @@
           const barW = Math.min(24, groupW * 0.32);
           const gap = 2;
           const axisMax = niceMax(Math.max(...players.map((p) => p.lanzamientos)));
-          const COLOR_LANZ = '#3b82f6';
+          const COLOR_LANZ = '#9085e9';
           const COLOR_GOL = '#d95926';
           const TEXT_MUTED = '#898781';
           const TEXT_SECONDARY = '#c3c2b7';
