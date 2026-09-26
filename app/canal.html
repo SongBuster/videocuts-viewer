@@ -809,7 +809,10 @@
         // Jugador: si hay "Puesto" relleno, agrupado en árbol (puesto >
         // jugadores, igual que Tiempo de juego); si no, el desplegable plano
         // de siempre. Los jugadores sin puesto van a un grupo aparte, para
-        // que no desaparezcan del filtro.
+        // que no desaparezcan del filtro. "Filtrar los filtros": las
+        // opciones se recalculan en cada renderStats() a partir de quién
+        // queda tras el resto de filtros activos (puesto elegido, modalidad
+        // 7 metros...) — ver refreshJugadorFilter, llamado desde renderStats.
         function playersToOptions(rawValues) {
           return [...rawValues]
             .map((raw) => ({ value: raw, ...parsePlayer(raw) }))
@@ -817,11 +820,10 @@
             .map(({ value, label }) => ({ value, label }));
         }
 
-        let playerFilter;
-        if (hasPuesto) {
+        function computeJugadorGroups(scopedRecords) {
           const byPosition = new Map();
           const sinPuesto = new Set();
-          for (const r of records) {
+          for (const r of scopedRecords) {
             const raw = r[COL_PLAYER];
             if (!raw) continue;
             const code = POSITION_LABEL_TO_CODE[r[COL_PUESTO]];
@@ -842,9 +844,14 @@
           if (sinPuesto.size > 0) {
             groups.push({ value: '__sin_puesto__', label: 'Sin puesto definido', children: playersToOptions(sinPuesto) });
           }
+          return groups;
+        }
+
+        let playerFilter;
+        if (hasPuesto) {
           playerFilter = createTreeDropdownFilter({
             fieldLabel: 'Jugador',
-            groups,
+            groups: computeJugadorGroups(records),
             onChange: (selected) => { activeFilters.jugador.selected = selected; renderStats(); }
           });
         } else {
@@ -859,31 +866,41 @@
         filterComponents.jugador = playerFilter;
         filtersCol.appendChild(playerFilter.el);
 
+        function refreshJugadorFilter() {
+          const scoped = filteredExcept('jugador');
+          const distinctPlayers = new Set(scoped.map((r) => r[COL_PLAYER]).filter(Boolean));
+          if (hasPuesto) playerFilter.setGroups(computeJugadorGroups(scoped));
+          else playerFilter.setOptions(playersToOptions(distinctPlayers));
+          playerFilter.el.hidden = distinctPlayers.size <= 1;
+        }
+
         // Fase de juego: sin buscador, y ordenado por nº de eventos (el más
         // frecuente primero), no alfabético. Solo tiene sentido en juego —
-        // en un 7 metros no varía, así que se oculta en ese modo (ver
-        // applyModalidadMode más abajo).
-        let phaseFilterEl = null;
+        // en un 7 metros no varía, se oculta en ese modo (ver
+        // refreshFaseFilter). Opciones recalculadas en cada renderStats a
+        // partir de lo que queda tras el resto de filtros ("filtrar los
+        // filtros"): si tras elegir puesto/jugador solo queda una fase
+        // posible, el filtro entero desaparece — no serviría de nada.
         const COL_PHASE = 'Fase de juego';
-        const phaseCounts = new Map();
-        for (const r of records) {
-          const v = r[COL_PHASE];
-          if (v) phaseCounts.set(v, (phaseCounts.get(v) || 0) + 1);
+        function computePhaseOptions(scopedRecords) {
+          const counts = new Map();
+          for (const r of scopedRecords) {
+            const v = r[COL_PHASE];
+            if (v) counts.set(v, (counts.get(v) || 0) + 1);
+          }
+          return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value]) => ({ value, label: value }));
         }
-        const phaseOptions = [...phaseCounts.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .map(([value]) => ({ value, label: value }));
-        if (phaseOptions.length > 0) {
-          const phaseFilter = createDropdownFilter({
+        let phaseFilter = null;
+        if (computePhaseOptions(records).length > 0) {
+          phaseFilter = createDropdownFilter({
             fieldLabel: 'Fase de juego',
-            options: phaseOptions,
+            options: computePhaseOptions(records),
             showSearch: false,
             onChange: (selected) => { activeFilters.fase.selected = selected; renderStats(); }
           });
           activeFilters.fase = { getValue: (r) => r[COL_PHASE], selected: [] };
           filterComponents.fase = phaseFilter;
           filtersCol.appendChild(phaseFilter.el);
-          phaseFilterEl = phaseFilter.el;
         }
 
         // Modalidad: en juego vs 7 metros, no es un filtro más — es
@@ -891,8 +908,9 @@
         // "ninguno") porque cambia qué más tiene sentido mostrar: en juego
         // aplica la Fase de juego y la Zona de lanzamiento; en un 7 metros
         // la zona no varía (tontería mostrarla) y en cambio sí importa si
-        // hubo amago. applyModalidadMode se llama al final del todo, cuando
-        // ya existen phaseFilterEl/amagoFilterEl.
+        // hubo amago. El puesto del lanzador tampoco tiene sentido en un 7
+        // metros — se deshabilita entero en vez de recalcularse (ver
+        // renderPositionSelect), al contrario que el resto de filtros.
         const COL_EVENT_TYPE = 'Tipo de evento';
         const EVENT_TYPE_LABELS = { 'Lanzamiento': 'Juego', 'Lanzamiento 7M': '7 metros' };
         const DEFAULT_EVENT_TYPE = 'Lanzamiento';
@@ -905,13 +923,13 @@
           .sort((a, b) => b[1] - a[1])
           .map(([value]) => ({ value, label: EVENT_TYPE_LABELS[value] || value }));
 
+        function isSieteMetros() {
+          return Boolean(activeFilters.tipoEvento && activeFilters.tipoEvento.selected[0] === 'Lanzamiento 7M');
+        }
+
         function applyModalidadMode(eventType) {
           const is7m = eventType === 'Lanzamiento 7M';
-          if (phaseFilterEl) {
-            phaseFilterEl.hidden = is7m;
-            if (is7m) { activeFilters.fase.selected = []; filterComponents.fase.setSelected([]); }
-          }
-          if (amagoFilterEl) amagoFilterEl.hidden = !is7m;
+          if (is7m && activeFilters.fase) { activeFilters.fase.selected = []; filterComponents.fase.setSelected([]); }
           if (!is7m && activeFilters.amago) { activeFilters.amago.selected = []; filterComponents.amago.setSelected([]); }
           const zonePanel = document.getElementById('zoneLanzamientoPanel');
           if (zonePanel) zonePanel.hidden = is7m;
@@ -941,40 +959,57 @@
           };
         }
 
+        function refreshFaseFilter() {
+          if (!phaseFilter) return;
+          if (isSieteMetros()) { phaseFilter.el.hidden = true; return; }
+          const options = computePhaseOptions(filteredExcept('fase'));
+          phaseFilter.setOptions(options);
+          phaseFilter.el.hidden = options.length <= 1;
+        }
+
         // Filtros simples por columna (sin buscador, ordenados por
-        // frecuencia descendente): Mano y Tipo de lanzamiento.
+        // frecuencia descendente): Mano y Tipo de lanzamiento. Devuelve una
+        // función de refresco (o null si nunca hubo variedad suficiente ni
+        // la habrá: acotar más un filtro nunca añade valores nuevos).
         function addSimpleFilter(key, fieldLabel, column) {
-          const counts = new Map();
-          for (const r of records) {
-            const v = r[column];
-            if (v) counts.set(v, (counts.get(v) || 0) + 1);
+          function computeOptions(scopedRecords) {
+            const counts = new Map();
+            for (const r of scopedRecords) {
+              const v = r[column];
+              if (v) counts.set(v, (counts.get(v) || 0) + 1);
+            }
+            return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value]) => ({ value, label: value }));
           }
-          const options = [...counts.entries()]
-            .sort((a, b) => b[1] - a[1])
-            .map(([value]) => ({ value, label: value }));
-          if (options.length <= 1) return;
+          const initialOptions = computeOptions(records);
+          if (initialOptions.length <= 1) return null;
           const filter = createDropdownFilter({
             fieldLabel,
-            options,
+            options: initialOptions,
             showSearch: false,
             onChange: (selected) => { activeFilters[key].selected = selected; renderStats(); }
           });
           activeFilters[key] = { getValue: (r) => r[column], selected: [] };
           filterComponents[key] = filter;
           filtersCol.appendChild(filter.el);
+          return function refresh() {
+            const options = computeOptions(filteredExcept(key));
+            filter.setOptions(options);
+            filter.el.hidden = options.length <= 1;
+          };
         }
 
-        addSimpleFilter('mano', 'Mano', 'Mano');
-        addSimpleFilter('tipoLanzamiento', 'Tipo de lanzamiento', 'Tipo de lanzamiento');
+        const refreshManoFilter = addSimpleFilter('mano', 'Mano', 'Mano');
+        const refreshTipoLanzamientoFilter = addSimpleFilter('tipoLanzamiento', 'Tipo de lanzamiento', 'Tipo de lanzamiento');
+
         // "Con amago" es un campo tipo casilla en la plantilla: solo se
         // guarda "Sí" cuando está marcado, en blanco si no — nunca hay un
         // segundo valor real "No" que contar, así que addSimpleFilter (que
         // exige >=2 valores distintos) nunca lo mostraría. Se construye
         // aparte, ofreciendo "No" como el hueco en blanco. Solo tiene
-        // sentido en un 7 metros (aplicable/oculto vía applyModalidadMode).
-        let amagoFilterEl = null;
+        // sentido en un 7 metros.
+        let amagoFilter = null;
         if (records.some((r) => r['Con amago'])) {
-          const amagoFilter = createDropdownFilter({
+          amagoFilter = createDropdownFilter({
             fieldLabel: 'Con amago',
             options: [{ value: 'Sí', label: 'Sí' }, { value: '', label: 'No' }],
             showSearch: false,
@@ -983,7 +1018,13 @@
           activeFilters.amago = { getValue: (r) => r['Con amago'] || '', selected: [] };
           filterComponents.amago = amagoFilter;
           filtersCol.appendChild(amagoFilter.el);
-          amagoFilterEl = amagoFilter.el;
+        }
+
+        function refreshAmagoFilter() {
+          if (!amagoFilter) return;
+          if (!isSieteMetros()) { amagoFilter.el.hidden = true; return; }
+          const present = new Set(filteredExcept('amago').map((r) => r['Con amago'] || ''));
+          amagoFilter.el.hidden = present.size <= 1;
         }
 
         // Estado inicial: en juego (Fase visible, Con amago oculto, Zona de
@@ -1034,6 +1075,16 @@
         }
 
         function renderStats() {
+          // "Filtrar los filtros": antes de calcular nada, cada filtro
+          // dependiente recalcula sus propias opciones a partir de lo que
+          // queda tras el resto de filtros activos, y se oculta si ya no
+          // puede distinguir nada (una sola opción posible).
+          refreshJugadorFilter();
+          if (refreshManoFilter) refreshManoFilter();
+          if (refreshTipoLanzamientoFilter) refreshTipoLanzamientoFilter();
+          refreshFaseFilter();
+          refreshAmagoFilter();
+
           const filtered = filteredExcept();
 
           const lanzamientos = filtered.length;
@@ -1063,6 +1114,21 @@
         // ya usado también por el detalle de jugador. No incluye "Portero"
         // (PT): un portero prácticamente no lanza.
         function renderPositionSelect(filtered) {
+          const wrap = document.getElementById('positionSelect');
+          // El puesto del lanzador no tiene sentido en un 7 metros — al
+          // contrario que el resto de filtros, aquí no se recalculan
+          // opciones, se deshabilita entero y se limpia cualquier selección
+          // previa (ver applyModalidadMode, que ya lo hacía para Fase/Amago).
+          if (isSieteMetros()) {
+            if (activeFilters.puesto.selected.length > 0) activeFilters.puesto.selected = [];
+            wrap.innerHTML = POSITION_ORDER
+              .filter((code) => code !== 'PT')
+              .map((code) => `<button type="button" class="pos-card" disabled>
+                <div class="pos-name">${POSITION_LABELS[code]}</div>
+                <div class="pos-figures">No aplica en 7 metros</div>
+              </button>`).join('');
+            return;
+          }
           const byPosition = new Map();
           for (const r of filtered) {
             const code = POSITION_LABEL_TO_CODE[r[COL_PUESTO]];
@@ -1073,7 +1139,7 @@
             byPosition.set(code, entry);
           }
           const selected = activeFilters.puesto.selected;
-          document.getElementById('positionSelect').innerHTML = POSITION_ORDER
+          wrap.innerHTML = POSITION_ORDER
             .filter((code) => code !== 'PT')
             .map((code) => {
               const data = byPosition.get(code) || { lanzamientos: 0, goles: 0 };

@@ -116,6 +116,16 @@ export function createDropdownFilter({ fieldLabel, options, onChange, showSearch
       selected = newSelected
       renderList()
       updateButtonState()
+    },
+    // Permite que las opciones cambien en caliente (filtros dependientes:
+    // "Jugador" solo debe listar quien juega en el puesto ya elegido, por
+    // ejemplo) — descarta de la selección los valores que ya no existan,
+    // en vez de dejarlos aplicando un filtro invisible e inexplicable.
+    setOptions: (newOptions) => {
+      options = newOptions
+      selected = selected.filter((v) => newOptions.some((o) => o.value === v))
+      renderList()
+      updateButtonState()
     }
   }
 }
@@ -137,7 +147,7 @@ export function createTreeDropdownFilter({ fieldLabel, groups, onChange }) {
   const expanded = {} // group.value -> boolean; por defecto, todos expandidos
   for (const g of groups) expanded[g.value] = true
 
-  const allLeafValues = groups.flatMap((g) => g.children.map((c) => c.value))
+  let allLeafValues = groups.flatMap((g) => g.children.map((c) => c.value))
 
   const root = document.createElement('div')
   root.className = 'dd-filter'
@@ -281,6 +291,17 @@ export function createTreeDropdownFilter({ fieldLabel, groups, onChange }) {
     // al pulsar un elemento en un gráfico) manteniendo el árbol sincronizado.
     setSelected: (newSelected) => {
       selected = newSelected
+      renderList()
+      updateButtonState()
+    },
+    // Igual que setOptions en createDropdownFilter, pero con grupos: filtros
+    // dependientes (p.ej. "Jugador" agrupado por puesto, cuando cambia qué
+    // puesto está activo). Los grupos nuevos empiezan expandidos.
+    setGroups: (newGroups) => {
+      groups = newGroups
+      allLeafValues = newGroups.flatMap((g) => g.children.map((c) => c.value))
+      for (const g of newGroups) if (!(g.value in expanded)) expanded[g.value] = true
+      selected = selected.filter((v) => allLeafValues.includes(v))
       renderList()
       updateButtonState()
     }
