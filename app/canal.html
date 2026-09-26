@@ -90,6 +90,36 @@
   #filtersPanel.panel { padding: 13px 18px; }
   #filtersPanel .panel-title-row { margin-bottom: 8px; }
   #filtersPanel .dash-filters-title { margin-bottom: 6px !important; }
+
+  /* ── Resumen: tarjetas grandes en vez de cifras en línea ── */
+  .stat-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat-tile { background: var(--surface-alt); border-radius: 10px; padding: 13px; min-width: 0; }
+  .stat-tile .stat-value {
+    font-family: var(--font-display); font-size: 26px; font-weight: 600; color: var(--accent);
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .stat-tile .stat-label { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 5px; }
+
+  /* ── Comparativa de jugadores: barras dobles (lanzamientos/goles)
+     apiladas por jugador en vez de un gráfico de barras agrupadas — se
+     lee mejor en una columna estrecha y sigue actuando como filtro
+     clicable (togglePlayerFilter, sin cambios). ── */
+  .scorer-row { padding: 9px 10px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; margin-bottom: 6px; transition: background .12s, border-color .12s; }
+  .scorer-row:last-child { margin-bottom: 0; }
+  .scorer-row:hover { background: rgba(255,255,255,0.04); }
+  .scorer-row.active { background: var(--accent-soft); border-color: var(--accent); }
+  .scorer-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; margin-bottom: 6px; }
+  .scorer-name { color: #fff; font-weight: 600; }
+  .scorer-eff { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+  .scorer-row.active .scorer-eff { color: var(--text-secondary); }
+  .scorer-bars { display: flex; flex-direction: column; }
+  .scorer-bar-track { background: rgba(255,255,255,0.06); height: 6px; overflow: hidden; }
+  .scorer-bar-track:first-child { border-radius: 4px 4px 0 0; }
+  .scorer-bar-track:last-child { border-radius: 0 0 4px 4px; margin-top: 1px; }
+  .scorer-bar-fill { height: 100%; }
+  .scorer-bar-fill.lanz { background: var(--accent); }
+  .scorer-bar-fill.gol { background: #d95926; }
+  .scorer-figures { display: flex; gap: 12px; margin-top: 6px; font-size: 10.5px; color: var(--text-muted); font-family: var(--font-mono); }
 </style>
 </head>
 <body>
@@ -673,7 +703,15 @@
 
             <div class="jug-layout">
               <div class="jug-col-a">
-                <div class="panel stat-headline" id="statHeadline"></div>
+                <div class="panel" data-collapsible>
+                  <div class="panel-title-row">
+                    <div class="panel-title" id="statHeadlineTitle">Resumen</div>
+                    <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                  </div>
+                  <div class="panel-body">
+                    <div class="stat-tiles" id="statHeadline"></div>
+                  </div>
+                </div>
                 <div class="panel" id="playerComparisonPanel" data-collapsible hidden>
                   <div class="panel-title-row">
                     <div class="panel-title">Comparativa de jugadores</div>
@@ -1058,8 +1096,8 @@
           renderStats();
         });
 
-        function figure(n, label) {
-          return `<div class="figure"><span class="n">${n}</span><span class="l">${label}</span></div>`;
+        function statTile(value, label) {
+          return `<div class="stat-tile"><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>`;
         }
 
         // Registros que cumplen todos los filtros activos EXCEPTO los
@@ -1094,11 +1132,17 @@
           const golesPorPartido = goles / partidosDistintos;
           const golesPorPartidoLabel = Number.isInteger(golesPorPartido) ? golesPorPartido : golesPorPartido.toFixed(1);
 
+          if (hasPuesto) {
+            const puestoCode = activeFilters.puesto.selected[0];
+            document.getElementById('statHeadlineTitle').textContent = puestoCode
+              ? `Resumen · ${POSITION_LABELS[puestoCode]}`
+              : 'Resumen';
+          }
           document.getElementById('statHeadline').innerHTML =
-            figure(lanzamientos, 'lanzamientos') +
-            figure(goles, 'goles') +
-            figure(`${efectividad}%`, 'efectividad') +
-            figure(golesPorPartidoLabel, 'goles por partido');
+            statTile(lanzamientos, 'lanzamientos') +
+            statTile(goles, 'goles') +
+            statTile(`${efectividad}%`, 'efectividad') +
+            statTile(golesPorPartidoLabel, 'goles por partido');
 
           renderPlayerComparison(filteredExcept('jugador'));
           renderZonePositionChart(filteredExcept('zonaLanzamiento'));
@@ -1174,11 +1218,10 @@
 
           const players = [...byPlayer.entries()]
             .map(([raw, { lanzamientos, goles }]) => {
-              const { dorsal, label } = parsePlayer(raw);
+              const { label } = parsePlayer(raw);
               return {
                 raw,
                 fullLabel: label,
-                dorsalLabel: String(dorsal),
                 lanzamientos,
                 goles,
                 efectividad: lanzamientos > 0 ? Math.round((goles / lanzamientos) * 100) : 0
@@ -1186,10 +1229,23 @@
             })
             .sort((a, b) => b.lanzamientos - a.lanzamientos);
 
-          document.getElementById('playerComparisonChart').innerHTML = buildPlayerComparisonSVG(players);
+          const maxLanz = Math.max(1, ...players.map((p) => p.lanzamientos));
+          const selectedPlayers = activeFilters.jugador.selected;
+          document.getElementById('playerComparisonChart').innerHTML = players.map((p) => {
+            const isActive = selectedPlayers.includes(p.raw);
+            return `
+              <div class="scorer-row ${isActive ? 'active' : ''}" data-player="${escapeHtml(p.raw)}">
+                <div class="scorer-head"><span class="scorer-name">${escapeHtml(p.fullLabel)}</span><span class="scorer-eff">${p.lanzamientos ? p.efectividad + '%' : '—'}</span></div>
+                <div class="scorer-bars">
+                  <div class="scorer-bar-track"><div class="scorer-bar-fill lanz" style="width:${(p.lanzamientos / maxLanz * 100).toFixed(0)}%"></div></div>
+                  <div class="scorer-bar-track"><div class="scorer-bar-fill gol" style="width:${(p.goles / maxLanz * 100).toFixed(0)}%"></div></div>
+                </div>
+                <div class="scorer-figures"><span>${p.lanzamientos} lanz.</span><span>${p.goles} goles</span></div>
+              </div>`;
+          }).join('');
 
-          document.querySelectorAll('#playerComparisonChart .player-bar-group').forEach((g) => {
-            g.addEventListener('click', () => togglePlayerFilter(g.dataset.player));
+          document.querySelectorAll('#playerComparisonChart .scorer-row').forEach((row) => {
+            row.addEventListener('click', () => togglePlayerFilter(row.dataset.player));
           });
         }
 
@@ -1208,67 +1264,6 @@
           const cur = activeFilters.puesto.selected;
           activeFilters.puesto.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
           renderStats();
-        }
-
-        function buildPlayerComparisonSVG(players) {
-          const W = 800, H = 300;
-          const marginTop = 26, marginBottom = 34, marginLeft = 30, marginRight = 10;
-          const plotW = W - marginLeft - marginRight;
-          const plotH = H - marginTop - marginBottom;
-          const n = players.length;
-          const groupW = plotW / n;
-          const barW = Math.min(24, groupW * 0.32);
-          const gap = 2;
-          const axisMax = niceMax(Math.max(...players.map((p) => p.lanzamientos)));
-          const COLOR_LANZ = '#9085e9';
-          const COLOR_GOL = '#d95926';
-          const TEXT_MUTED = '#898781';
-          const TEXT_SECONDARY = '#c3c2b7';
-          const GRID = '#2c2c2a';
-          const AXIS = '#383835';
-
-          let gridSvg = '';
-          for (let v = 0; v <= axisMax; v += 5) {
-            const y = marginTop + plotH - (v / axisMax) * plotH;
-            gridSvg += `<line x1="${marginLeft}" y1="${y}" x2="${W - marginRight}" y2="${y}" stroke="${v === 0 ? AXIS : GRID}" stroke-width="1" />`;
-            gridSvg += `<text x="${marginLeft - 6}" y="${y}" text-anchor="end" dominant-baseline="middle" fill="${TEXT_MUTED}" font-size="10">${v}</text>`;
-          }
-
-          const selectedPlayers = activeFilters.jugador.selected;
-
-          let groupsSvg = '';
-          players.forEach((p, i) => {
-            const centerX = marginLeft + i * groupW + groupW / 2;
-            const groupX = marginLeft + i * groupW;
-            const lanzH = (p.lanzamientos / axisMax) * plotH;
-            const golH = (p.goles / axisMax) * plotH;
-            const lanzY = marginTop + plotH - lanzH;
-            const golY = marginTop + plotH - golH;
-            const lanzX = centerX - barW - gap / 2;
-            const golX = centerX + gap / 2;
-
-            const isSelected = selectedPlayers.includes(p.raw);
-            const isDimmed = selectedPlayers.length > 0 && !isSelected;
-            const highlight = isSelected ? ` stroke="#fff" stroke-width="1.5"` : '';
-
-            const topY = Math.min(lanzY, golY);
-            const fitsFull = p.fullLabel.length * 5.2 <= groupW - 4;
-            const xLabel = fitsFull ? p.fullLabel : p.dorsalLabel;
-
-            groupsSvg += `
-              <g class="player-bar-group" data-player="${escapeHtml(p.raw)}" opacity="${isDimmed ? 0.35 : 1}">
-                <rect x="${groupX}" y="0" width="${groupW}" height="${H}" fill="transparent" />
-                <rect x="${lanzX}" y="${lanzY}" width="${barW}" height="${Math.max(0, lanzH)}" rx="4" fill="${COLOR_LANZ}"${highlight}><title>${escapeHtml(p.fullLabel)} — Lanzamientos: ${p.lanzamientos}</title></rect>
-                <rect x="${golX}" y="${golY}" width="${barW}" height="${Math.max(0, golH)}" rx="4" fill="${COLOR_GOL}"${highlight}><title>${escapeHtml(p.fullLabel)} — Goles: ${p.goles}</title></rect>
-                <text x="${centerX}" y="${Math.max(marginTop - 8, topY - 6)}" text-anchor="middle" fill="${TEXT_SECONDARY}" font-size="10" style="pointer-events:none">${p.goles}/${p.lanzamientos} (${p.efectividad}%)</text>
-                <text x="${centerX}" y="${marginTop + plotH + 15}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="9" style="pointer-events:none">${escapeHtml(xLabel)}</text>
-              </g>`;
-          });
-
-          return `<svg viewBox="0 0 ${W} ${H}" class="player-chart-svg" role="img" aria-label="Comparativa de jugadores: lanzamientos y goles">
-            ${gridSvg}
-            ${groupsSvg}
-          </svg>`;
         }
 
         // ── Zona de lanzamiento: mismas 13 zonas e imagen de pista que usa
