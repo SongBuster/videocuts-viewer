@@ -120,6 +120,30 @@
   .scorer-bar-fill.lanz { background: var(--accent); }
   .scorer-bar-fill.gol { background: #d95926; }
   .scorer-figures { display: flex; gap: 12px; margin-top: 6px; font-size: 10.5px; color: var(--text-muted); font-family: var(--font-mono); }
+
+  /* ── Clips: rejilla de miniaturas reales de YouTube (Etapa 3) — sustituye
+     a la tabla de detalle como forma principal de abrir un vídeo; la tabla
+     pasa a una sección "ver tabla completa" colapsada, a todo lo ancho,
+     debajo de las dos columnas (mismo patrón que el prototipo). ── */
+  .clips-count { font-size: 11px; color: var(--text-muted); }
+  .filmstrip { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap: 12px; }
+  .clip-card { min-width: 0; cursor: pointer; background: none; border: none; padding: 0; text-align: left; font-family: inherit; color: inherit; }
+  .clip-thumb { position: relative; aspect-ratio: 16/9; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--surface-alt); }
+  .clip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .clip-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; color: #fff; text-shadow: 0 1px 5px rgba(0,0,0,.7); opacity: .9; transition: transform .12s; }
+  .clip-card:hover .clip-play { transform: scale(1.12); }
+  .clip-time { position: absolute; bottom: 6px; right: 6px; font-family: var(--font-mono); font-size: 10px; background: rgba(0,0,0,.65); padding: 1px 5px; border-radius: 4px; color: #fff; }
+  .clip-meta { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
+  .clip-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; flex-shrink: 0; }
+  .clip-pill.gol { background: rgba(12,163,12,0.16); color: #4fd37a; }
+  .clip-pill.parada { background: rgba(57,135,229,0.16); color: #7bb1ef; }
+  .clip-pill.fuera { background: rgba(217,89,38,0.16); color: #f0906a; }
+  .clip-player { font-size: 11px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .clip-sub { font-size: 10.5px; color: var(--text-muted); margin-top: 3px; }
+  .clips-more { grid-column: 1 / -1; font-size: 11px; color: var(--text-muted); text-align: center; padding-top: 4px; }
+
+  .table-toggle { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 2px 0; font-family: inherit; font-weight: 600; }
+  .table-wrap { margin-top: 12px; }
 </style>
 </head>
 <body>
@@ -751,18 +775,28 @@
                 </div>
               </div>
               <aside class="jug-col-b">
-                <div class="panel" id="detailTablePanel" data-collapsible hidden>
+                <div class="panel" id="clipsPanel" data-collapsible hidden>
                   <div class="panel-title-row">
-                    <div class="panel-title">Detalle de lanzamientos</div>
-                    <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                    <div class="panel-title" id="clipsTitle">Clips</div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <span class="clips-count" id="clipsCount"></span>
+                      <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                    </div>
                   </div>
                   <div class="panel-body">
-                    <div class="detail-table-wrap">
-                      <table class="detail-table" id="detailTable"></table>
-                    </div>
+                    <div class="filmstrip" id="filmstrip"></div>
                   </div>
                 </div>
               </aside>
+            </div>
+
+            <div class="panel" id="detailTablePanel" hidden>
+              <button type="button" class="table-toggle" id="tableToggle">Ver tabla completa ▾</button>
+              <div class="table-wrap" id="tableWrap" hidden>
+                <div class="detail-table-wrap">
+                  <table class="detail-table" id="detailTable"></table>
+                </div>
+              </div>
             </div>
           </div>`;
 
@@ -1088,6 +1122,12 @@
           renderStats();
         });
 
+        document.getElementById('tableToggle').addEventListener('click', () => {
+          const wrap = document.getElementById('tableWrap');
+          wrap.hidden = !wrap.hidden;
+          document.getElementById('tableToggle').textContent = wrap.hidden ? 'Ver tabla completa ▾' : 'Ocultar tabla ▴';
+        });
+
         document.getElementById('filtersReset').addEventListener('click', () => {
           for (const key of Object.keys(activeFilters)) {
             activeFilters[key].selected = [];
@@ -1148,7 +1188,80 @@
           renderZonePositionChart(filteredExcept('zonaLanzamiento'));
           renderGoalZoneChart(filteredExcept('zonaPorteria'));
           if (hasPuesto) renderPositionSelect(filteredExcept('puesto'));
+          renderClips(filtered);
           renderDetailTable(filtered);
+        }
+
+        // Orden por defecto de las jugadas: cronológico (partido > parte >
+        // tiempo) — lo usan tanto los Clips como la tabla de detalle (esta
+        // última lo sustituye por su propio orden si se pulsa una cabecera).
+        function sortChronological(rows) {
+          return [...rows].sort((a, b) => {
+            const codeA = a[COL_CODE] || '', codeB = b[COL_CODE] || '';
+            if (codeA !== codeB) return codeA < codeB ? -1 : 1;
+            const partA = a['Parte'] || '', partB = b['Parte'] || '';
+            if (partA !== partB) return partA < partB ? -1 : 1;
+            return (a['Tiempo de partido'] || '').localeCompare(b['Tiempo de partido'] || '');
+          });
+        }
+
+        function formatClipTime(sec) {
+          sec = Math.max(0, Math.floor(sec));
+          return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+        }
+
+        const RESULT_PILL_CLASS = { Gol: 'gol', Parada: 'parada', Fuera: 'fuera' };
+
+        // ── Clips: miniaturas reales de YouTube (img.youtube.com/vi/<id>/...)
+        // en vez de la tabla como forma principal de abrir un vídeo — la
+        // tabla sigue disponible, colapsada, en "Ver tabla completa". Un tope
+        // (CAP) evita renderizar cientos de <img> a la vez si el filtro es
+        // muy amplio; el modal de vídeo sigue pudiendo navegar más allá de
+        // las tarjetas visibles (currentVideoRows es la lista completa, no
+        // solo las mostradas).
+        function renderClips(filtered) {
+          const panel = document.getElementById('clipsPanel');
+          const clipRows = sortChronological(filtered).filter((r) => r[COL_YOUTUBE]);
+          if (clipRows.length === 0) { panel.hidden = true; return; }
+          panel.hidden = false;
+
+          document.getElementById('clipsCount').textContent = `${clipRows.length} clip${clipRows.length === 1 ? '' : 's'}`;
+
+          const CAP = 24;
+          const shown = clipRows.slice(0, CAP);
+          const cardsHtml = shown.map((r, i) => {
+            const resultado = r['Resultado'] || '';
+            const pillClass = RESULT_PILL_CLASS[resultado] || '';
+            const playerLabel = r[COL_PLAYER] ? parsePlayer(r[COL_PLAYER]).label : '';
+            const zone = formatZoneLabel(r[COL_POSITION]);
+            const context = [r[COL_CODE], r['Parte'], r['Tiempo de partido']].filter(Boolean).join(' · ');
+            const startSec = Math.max(0, Math.floor(Number(r[COL_CLIP_START]) || 0));
+            return `
+              <button type="button" class="clip-card" data-idx="${i}">
+                <div class="clip-thumb">
+                  <img src="https://img.youtube.com/vi/${encodeURIComponent(r[COL_YOUTUBE])}/mqdefault.jpg" alt="" loading="lazy" />
+                  <span class="clip-play">▶</span>
+                  <span class="clip-time">${formatClipTime(startSec)}</span>
+                </div>
+                <div class="clip-meta">
+                  ${resultado ? `<span class="clip-pill ${pillClass}">${escapeHtml(resultado)}</span>` : ''}
+                  <span class="clip-player">${escapeHtml(playerLabel)}</span>
+                </div>
+                <div class="clip-sub">${escapeHtml([zone, context].filter(Boolean).join(' · '))}</div>
+              </button>`;
+          }).join('');
+          const moreHtml = clipRows.length > CAP
+            ? `<div class="clips-more">+${clipRows.length - CAP} clips más — abre "Ver tabla completa" para verlos todos</div>`
+            : '';
+          document.getElementById('filmstrip').innerHTML = cardsHtml + moreHtml;
+
+          document.querySelectorAll('#filmstrip .clip-card').forEach((card) => {
+            const idx = Number(card.dataset.idx);
+            card.addEventListener('click', () => {
+              currentVideoRows = clipRows;
+              openVideoModal(clipRows[idx], idx);
+            });
+          });
         }
 
         // ── Selector de puesto: navegación principal (sustituye al antiguo
@@ -1468,16 +1581,11 @@
           if (filtered.length === 0) { panel.hidden = true; return; }
           panel.hidden = false;
 
-          // Orden por defecto: cronológico (partido > parte > tiempo). Si se
-          // ha pulsado una cabecera, se reordena por esa columna pero de
-          // forma estable, así los empates mantienen el orden cronológico.
-          let rows = [...filtered].sort((a, b) => {
-            const codeA = a[COL_CODE] || '', codeB = b[COL_CODE] || '';
-            if (codeA !== codeB) return codeA < codeB ? -1 : 1;
-            const partA = a['Parte'] || '', partB = b['Parte'] || '';
-            if (partA !== partB) return partA < partB ? -1 : 1;
-            return (a['Tiempo de partido'] || '').localeCompare(b['Tiempo de partido'] || '');
-          });
+          // Orden por defecto: cronológico (partido > parte > tiempo, mismo
+          // criterio que los Clips). Si se ha pulsado una cabecera, se
+          // reordena por esa columna pero de forma estable, así los empates
+          // mantienen el orden cronológico.
+          let rows = sortChronological(filtered);
 
           if (detailSort.key) {
             const col = DETAIL_COLUMNS.find((c) => c.key === detailSort.key);
@@ -1502,9 +1610,11 @@
           const head = `<thead><tr>${headCells}<th>Vídeo</th></tr></thead>`;
 
           // Índice dentro de "solo las filas con vídeo" (no de "rows" entero),
-          // que es la lista que usan luego los botones Anterior/Siguiente.
+          // que es la lista que usan luego los botones Anterior/Siguiente —
+          // asignada a currentVideoRows solo al pulsar "Ver" (no aquí, al
+          // renderizar), para no pisar la lista de los Clips si ambos
+          // paneles están visibles a la vez.
           const videoRows = rows.filter((r) => r[COL_YOUTUBE]);
-          currentVideoRows = videoRows;
           let videoCounter = 0;
 
           const body = rows.map((r) => {
@@ -1523,7 +1633,7 @@
 
           document.querySelectorAll('#detailTable .video-link').forEach((btn) => {
             const idx = Number(btn.dataset.rowIdx);
-            btn.addEventListener('click', () => openVideoModal(videoRows[idx], idx));
+            btn.addEventListener('click', () => { currentVideoRows = videoRows; openVideoModal(videoRows[idx], idx); });
           });
 
           document.querySelectorAll('#detailTable th.sortable').forEach((th) => {
