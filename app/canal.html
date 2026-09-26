@@ -62,6 +62,19 @@
       position: static;
     }
   }
+
+  /* ── Pestaña Jugadores: filtros arriba (a todo el ancho, colapsables como
+     cualquier otro panel) en vez de barra lateral fija, y dos columnas
+     debajo — deja hueco a la derecha para los Clips (siguiente etapa); de
+     momento ahí vive la tabla de detalle. La pestaña Portero sigue con el
+     esquema .dash-layout/.dash-filters de siempre, sin tocar. ── */
+  .jug-wrap { display: flex; flex-direction: column; gap: 18px; padding: 18px 20px 30px; }
+  .filters-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .jug-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.05fr); gap: 18px; align-items: start; }
+  .jug-col-a, .jug-col-b { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  @media (max-width: 900px) {
+    .jug-layout { grid-template-columns: minmax(0,1fr); }
+  }
 </style>
 </head>
 <body>
@@ -607,36 +620,42 @@
         const hasPuesto = records.some((r) => r[COL_PUESTO]);
 
         panels.jugadores.innerHTML = `
-          ${hasPuesto ? `
-          <section aria-label="Selección de puesto" style="padding: 16px 20px 0;">
-            <div class="dash-filters-title" style="margin-bottom:8px;">Puesto del lanzador</div>
-            <div class="position-select" id="positionSelect"></div>
-          </section>` : ''}
-          <button type="button" class="filters-toggle" id="filtersToggle">☰ Filtros</button>
-          <div class="dash-layout">
-            <aside class="dash-filters" id="dashFilters">
-              <div class="dash-filters-title-row">
-                <div class="dash-filters-title">Filtros</div>
-                <button type="button" class="filters-reset" id="filtersReset">Limpiar todo</button>
-              </div>
-              <div class="filters-col" id="filtersCol"></div>
-            </aside>
-            <main class="dash-main">
-              <div class="panel stat-headline" id="statHeadline"></div>
-              <div class="panel" id="playerComparisonPanel" data-collapsible hidden>
-                <div class="panel-title-row">
-                  <div class="panel-title">Comparativa de jugadores</div>
+          <div class="jug-wrap">
+            ${hasPuesto ? `
+            <section aria-label="Selección de puesto">
+              <div class="dash-filters-title" style="margin-bottom:8px;">Puesto del lanzador</div>
+              <div class="position-select" id="positionSelect"></div>
+            </section>` : ''}
+
+            <div class="panel" id="filtersPanel" data-collapsible>
+              <div class="panel-title-row">
+                <div class="panel-title">Filtros</div>
+                <div style="display:flex; align-items:center; gap:14px;">
+                  <button type="button" class="filters-reset" id="filtersReset">Limpiar todo</button>
                   <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
                 </div>
-                <div class="panel-body">
-                  <div class="chart-legend">
-                    <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:var(--accent)"></span>Lanzamientos</span>
-                    <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
-                  </div>
-                  <div id="playerComparisonChart"></div>
-                </div>
               </div>
-              <div class="zones-row">
+              <div class="panel-body">
+                <div class="filters-row" id="filtersCol"></div>
+              </div>
+            </div>
+
+            <div class="jug-layout">
+              <div class="jug-col-a">
+                <div class="panel stat-headline" id="statHeadline"></div>
+                <div class="panel" id="playerComparisonPanel" data-collapsible hidden>
+                  <div class="panel-title-row">
+                    <div class="panel-title">Comparativa de jugadores</div>
+                    <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                  </div>
+                  <div class="panel-body">
+                    <div class="chart-legend">
+                      <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:var(--accent)"></span>Lanzamientos</span>
+                      <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
+                    </div>
+                    <div id="playerComparisonChart"></div>
+                  </div>
+                </div>
                 <div class="panel" data-collapsible>
                   <div class="panel-title-row">
                     <div class="panel-title">Zona de lanzamiento</div>
@@ -662,24 +681,27 @@
                   </div>
                 </div>
               </div>
-              <div class="panel" id="detailTablePanel" data-collapsible hidden>
-                <div class="panel-title-row">
-                  <div class="panel-title">Detalle de lanzamientos</div>
-                  <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
-                </div>
-                <div class="panel-body">
-                  <div class="detail-table-wrap">
-                    <table class="detail-table" id="detailTable"></table>
+              <aside class="jug-col-b">
+                <div class="panel" id="detailTablePanel" data-collapsible hidden>
+                  <div class="panel-title-row">
+                    <div class="panel-title">Detalle de lanzamientos</div>
+                    <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                  </div>
+                  <div class="panel-body">
+                    <div class="detail-table-wrap">
+                      <table class="detail-table" id="detailTable"></table>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </main>
+              </aside>
+            </div>
           </div>`;
 
-        setupFiltersToggle(document.getElementById('filtersToggle'), document.getElementById('dashFilters'));
-
         // Secciones colapsables (sobre todo útil en móvil, para no obligar a
-        // hacer tanto scroll por una sección que no interesa ahora mismo).
+        // hacer tanto scroll por una sección que no interesa ahora mismo) —
+        // el panel de Filtros es una más, ya no necesita su propio mecanismo
+        // de mostrar/ocultar aparte (setupFiltersToggle, que sigue usando la
+        // pestaña Portero con su barra lateral).
         document.querySelectorAll('#tab-jugadores .panel[data-collapsible]').forEach((panel) => {
           const btn = panel.querySelector('.panel-collapse-btn');
           btn.addEventListener('click', () => panel.toggleAttribute('data-collapsed'));
