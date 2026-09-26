@@ -81,10 +81,15 @@
      de un vistazo, sin abrir nada — reutiliza .chip-group/.chip de
      app.css. Los de más variedad (Fase, Mano, Tipo...) se quedan como
      desplegables, agrupados debajo tras el divisor. ── */
-  .filters-tier { display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 14px; }
+  .filters-tier { display: flex; gap: 22px; flex-wrap: wrap; margin-bottom: 10px; }
+  .chip-group { gap: 5px; }
+  .chip-group .group-label { margin-top: 0; }
   .chip-group > div { display: contents; }
   .chip-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: middle; }
-  .filters-divider { height: 1px; background: #2a2a2a; margin: 0 0 14px; }
+  .filters-divider { height: 1px; background: #2a2a2a; margin: 0 0 10px; }
+  #filtersPanel.panel { padding: 13px 18px; }
+  #filtersPanel .panel-title-row { margin-bottom: 8px; }
+  #filtersPanel .dash-filters-title { margin-bottom: 6px !important; }
 </style>
 </head>
 <body>
@@ -682,7 +687,7 @@
                     <div id="playerComparisonChart"></div>
                   </div>
                 </div>
-                <div class="panel" data-collapsible>
+                <div class="panel" id="zoneLanzamientoPanel" data-collapsible>
                   <div class="panel-title-row">
                     <div class="panel-title">Zona de lanzamiento</div>
                     <div style="display:flex; align-items:center; gap:10px;">
@@ -769,9 +774,21 @@
           return { setSelected: render };
         }
 
+        // Con pocas jornadas, chips (un vistazo); con muchas (liga completa),
+        // desplegable — si no, la fila de chips crece sin control.
         const jornadaValues = [...new Set(records.map((r) => r[COL_CODE]).filter(Boolean))].sort();
         activeFilters.partido = { getValue: (r) => r[COL_CODE], selected: [] };
-        filterComponents.partido = createChipGroup('jornadaChips', 'partido', jornadaValues.map((v) => ({ value: v, label: v })));
+        if (jornadaValues.length > 3) {
+          const jornadaFilter = createDropdownFilter({
+            fieldLabel: 'Jornada',
+            options: jornadaValues.map((v) => ({ value: v, label: v })),
+            onChange: (selected) => { activeFilters.partido.selected = selected; renderStats(); }
+          });
+          document.getElementById('jornadaChips').appendChild(jornadaFilter.el);
+          filterComponents.partido = jornadaFilter;
+        } else {
+          filterComponents.partido = createChipGroup('jornadaChips', 'partido', jornadaValues.map((v) => ({ value: v, label: v })));
+        }
 
         activeFilters.resultado = { getValue: (r) => r['Resultado'], selected: [] };
         filterComponents.resultado = createChipGroup('resultadoChips', 'resultado', [
@@ -843,7 +860,10 @@
         filtersCol.appendChild(playerFilter.el);
 
         // Fase de juego: sin buscador, y ordenado por nº de eventos (el más
-        // frecuente primero), no alfabético.
+        // frecuente primero), no alfabético. Solo tiene sentido en juego —
+        // en un 7 metros no varía, así que se oculta en ese modo (ver
+        // applyModalidadMode más abajo).
+        let phaseFilterEl = null;
         const COL_PHASE = 'Fase de juego';
         const phaseCounts = new Map();
         for (const r of records) {
@@ -863,14 +883,19 @@
           activeFilters.fase = { getValue: (r) => r[COL_PHASE], selected: [] };
           filterComponents.fase = phaseFilter;
           filtersCol.appendChild(phaseFilter.el);
+          phaseFilterEl = phaseFilter.el;
         }
 
-        // Modalidad: distingue los lanzamientos de 7 metros (sin oposición
-        // real, efectividad muy distinta) de los de juego. Se llama
-        // "Modalidad" y no "Tipo de lanzamiento" para no confundirlo con el
-        // filtro de Tipo de lanzamiento (Potencia/Colocado/...) de más abajo.
+        // Modalidad: en juego vs 7 metros, no es un filtro más — es
+        // excluyente (siempre hay exactamente uno activo, nunca "los dos" ni
+        // "ninguno") porque cambia qué más tiene sentido mostrar: en juego
+        // aplica la Fase de juego y la Zona de lanzamiento; en un 7 metros
+        // la zona no varía (tontería mostrarla) y en cambio sí importa si
+        // hubo amago. applyModalidadMode se llama al final del todo, cuando
+        // ya existen phaseFilterEl/amagoFilterEl.
         const COL_EVENT_TYPE = 'Tipo de evento';
         const EVENT_TYPE_LABELS = { 'Lanzamiento': 'Juego', 'Lanzamiento 7M': '7 metros' };
+        const DEFAULT_EVENT_TYPE = 'Lanzamiento';
         const eventTypeCounts = new Map();
         for (const r of records) {
           const v = r[COL_EVENT_TYPE];
@@ -879,10 +904,41 @@
         const eventTypeOptions = [...eventTypeCounts.entries()]
           .sort((a, b) => b[1] - a[1])
           .map(([value]) => ({ value, label: EVENT_TYPE_LABELS[value] || value }));
+
+        function applyModalidadMode(eventType) {
+          const is7m = eventType === 'Lanzamiento 7M';
+          if (phaseFilterEl) {
+            phaseFilterEl.hidden = is7m;
+            if (is7m) { activeFilters.fase.selected = []; filterComponents.fase.setSelected([]); }
+          }
+          if (amagoFilterEl) amagoFilterEl.hidden = !is7m;
+          if (!is7m && activeFilters.amago) { activeFilters.amago.selected = []; filterComponents.amago.setSelected([]); }
+          const zonePanel = document.getElementById('zoneLanzamientoPanel');
+          if (zonePanel) zonePanel.hidden = is7m;
+        }
+
         if (eventTypeOptions.length > 1) {
-          activeFilters.tipoEvento = { getValue: (r) => r[COL_EVENT_TYPE], selected: [] };
+          activeFilters.tipoEvento = { getValue: (r) => r[COL_EVENT_TYPE], selected: [DEFAULT_EVENT_TYPE] };
           document.getElementById('modalidadGroup').hidden = false;
-          filterComponents.tipoEvento = createChipGroup('modalidadChips', 'tipoEvento', eventTypeOptions);
+          const modalidadEl = document.getElementById('modalidadChips');
+          function renderModalidadChips() {
+            const current = activeFilters.tipoEvento.selected[0];
+            modalidadEl.innerHTML = eventTypeOptions.map((o) => `
+              <button type="button" class="chip ${current === o.value ? 'active' : ''}" data-value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</button>`).join('');
+            modalidadEl.querySelectorAll('.chip').forEach((btn) => {
+              btn.addEventListener('click', () => {
+                if (btn.dataset.value === current) return; // siempre exactamente uno activo
+                activeFilters.tipoEvento.selected = [btn.dataset.value];
+                applyModalidadMode(btn.dataset.value);
+                renderModalidadChips();
+                renderStats();
+              });
+            });
+          }
+          renderModalidadChips();
+          filterComponents.tipoEvento = {
+            setSelected: () => { activeFilters.tipoEvento.selected = [DEFAULT_EVENT_TYPE]; applyModalidadMode(DEFAULT_EVENT_TYPE); renderModalidadChips(); }
+          };
         }
 
         // Filtros simples por columna (sin buscador, ordenados por
@@ -914,7 +970,9 @@
         // guarda "Sí" cuando está marcado, en blanco si no — nunca hay un
         // segundo valor real "No" que contar, así que addSimpleFilter (que
         // exige >=2 valores distintos) nunca lo mostraría. Se construye
-        // aparte, ofreciendo "No" como el hueco en blanco.
+        // aparte, ofreciendo "No" como el hueco en blanco. Solo tiene
+        // sentido en un 7 metros (aplicable/oculto vía applyModalidadMode).
+        let amagoFilterEl = null;
         if (records.some((r) => r['Con amago'])) {
           const amagoFilter = createDropdownFilter({
             fieldLabel: 'Con amago',
@@ -925,7 +983,13 @@
           activeFilters.amago = { getValue: (r) => r['Con amago'] || '', selected: [] };
           filterComponents.amago = amagoFilter;
           filtersCol.appendChild(amagoFilter.el);
+          amagoFilterEl = amagoFilter.el;
         }
+
+        // Estado inicial: en juego (Fase visible, Con amago oculto, Zona de
+        // lanzamiento visible) — el mismo camino tanto si hay modalidad para
+        // elegir como si no (un equipo sin ningún 7 metros registrado).
+        applyModalidadMode(DEFAULT_EVENT_TYPE);
 
         // Zona de lanzamiento y zona de portería no tienen desplegable propio
         // en la columna de filtros: se activan solo al pulsar sobre el

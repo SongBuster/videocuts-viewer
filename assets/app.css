@@ -186,6 +186,11 @@ button { font-family: inherit; }
 
 /* ── Filtro desplegable multi-selección (estilo Looker Studio) ── */
 .dd-filter { position: relative; display: inline-block; }
+/* Mismo motivo que .dd-filter-panel[hidden] más abajo: sin esto, el
+   display:inline-block de arriba pisa al atributo hidden (misma
+   especificidad, y el nuestro va después) y un filtro que se oculta según
+   el modo (p.ej. "Con amago" fuera de 7 metros) se quedaría siempre visible. */
+.dd-filter[hidden] { display: none; }
 .dd-filter-btn {
   background: var(--surface-alt); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 999px;
   padding: 7px 14px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px;
