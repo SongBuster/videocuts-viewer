@@ -375,10 +375,31 @@
   // pausa/reanuda a través de la API. En modo de reserva (sin API) no hay
   // nada que hacer aquí, se pierde esa posibilidad como el resto de
   // limitaciones ya conocidas de ese modo.
+  //
+  // Bloqueadores de rastreo (Brave Shields y similares, que cortan por
+  // defecto las llamadas de telemetría de YouTube como .../log_event) pueden
+  // dejar a medias el canal interno de mensajes de la propia API de
+  // YouTube — el vídeo se ve y se reproduce con normalidad, pero
+  // ytPlayer.pauseVideo()/playVideo() no llegan a hacer nada porque el
+  // envoltorio JS de YouTube se queda atascado reintentando esa llamada
+  // bloqueada. Como red de seguridad, además de la API se manda el mismo
+  // comando directamente por postMessage al iframe — es literalmente lo que
+  // la API hace por dentro, pero sin pasar por su envoltorio si este se ha
+  // quedado colgado.
+  function postPlayerCommand(func) {
+    try {
+      const iframe = ytPlayer && ytPlayer.getIframe && ytPlayer.getIframe();
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args: '' }), '*');
+      }
+    } catch {}
+  }
   document.getElementById('videoModalClickCatch').addEventListener('click', () => {
     if (fallbackMode || !ytPlayer) return;
-    if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
-    else ytPlayer.playVideo();
+    const isPlaying = ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
+    const func = isPlaying ? 'pauseVideo' : 'playVideo';
+    ytPlayer[func]();
+    postPlayerCommand(func);
   });
 
   // Resultado → clase de la pill de color: perspectiva jugador (gol/parada/
