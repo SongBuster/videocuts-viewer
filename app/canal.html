@@ -578,9 +578,23 @@
   // manual con "se acabó el corte", se mira el tiempo real reproducido
   // (getCurrentTime): solo si ya está en el fin del corte se considera
   // acabado de verdad; si el usuario lo retoma, sigue donde estaba.
+  //
+  // Bug real encontrado al probarlo: al cargar un corte nuevo con
+  // loadVideoById (reutiliza el mismo ytPlayer), YouTube puede disparar un
+  // PAUSED transitorio mientras carga/hace buffering — y en ese momento
+  // getCurrentTime() todavía puede devolver el tiempo del corte ANTERIOR
+  // (no se ha actualizado todavía al nuevo). Si ese tiempo residual ya
+  // superaba el "fin de corte" del nuevo vídeo, se disparaba un avance
+  // automático inmediato, antes de que el corte nuevo llegara a
+  // reproducirse — exactamente cuando el vídeo tarda un poco en cargar.
+  // clipHasStarted (a false al empezar cada corte, ver openVideoModal/
+  // replayVideo) exige haber visto de verdad un PLAYING de ESTE corte antes
+  // de fiarnos de un PAUSED para decidir que se acabó.
+  let clipHasStarted = false;
   function handlePlayerStateChange(e) {
+    if (e.data === YT.PlayerState.PLAYING) { clipHasStarted = true; return; }
     if (e.data === YT.PlayerState.ENDED) { tryAutoAdvance(); return; }
-    if (e.data === YT.PlayerState.PAUSED && currentVideoParams && Number.isFinite(currentVideoParams.endSec)) {
+    if (e.data === YT.PlayerState.PAUSED && clipHasStarted && currentVideoParams && Number.isFinite(currentVideoParams.endSec)) {
       const reachedEnd = ytPlayer.getCurrentTime() >= currentVideoParams.endSec - 0.5;
       if (reachedEnd) tryAutoAdvance();
     }
@@ -601,6 +615,7 @@
 
   function replayVideo() {
     advanceFired = false;
+    clipHasStarted = false; // igual que al cargar un corte nuevo: no fiarse de un PAUSED hasta ver un PLAYING real tras el seek
     if (fallbackMode) {
       renderFallbackIframe(currentVideoParams);
       if (currentVideoParams) scheduleFallbackAdvance(currentVideoParams.startSec, currentVideoParams.endSec);
@@ -639,6 +654,7 @@
     currentClipStart = startSec;
     currentVideoParams = { youtubeId, startSec, endSec };
     advanceFired = false;
+    clipHasStarted = false;
 
     if (fallbackMode) { renderFallbackIframe(currentVideoParams); scheduleFallbackAdvance(startSec, endSec); }
     else if (ytApiReady) loadIntoPlayer(currentVideoParams);
