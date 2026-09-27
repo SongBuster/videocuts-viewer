@@ -514,6 +514,12 @@
     videoModalAutoAdvance.parentElement.title = reason;
   }
 
+  // 3000ms era demasiado poco: en condiciones reales (compitiendo con el
+  // resto de recursos de la página nada más cargar) el script de la API
+  // podía tardar más que eso sin estar bloqueado por nada — y una vez se
+  // entra en modo de reserva, se queda así el resto de la sesión aunque el
+  // script termine cargando justo después (ver onYouTubeIframeAPIReady más
+  // arriba). Preferible esperar un poco más antes de rendirse.
   setTimeout(() => {
     if (ytApiReady) return;
     enterFallbackMode();
@@ -521,7 +527,7 @@
       renderFallbackIframe(pendingVideo);
       pendingVideo = null;
     }
-  }, 3000);
+  }, 8000);
 
   function renderFallbackIframe({ youtubeId, startSec, endSec }) {
     // controls=0 se probó y se quitó: en Brave (Shields) y bloqueadores
@@ -608,7 +614,17 @@
   function processPlayerState(stateCode, currentTimeHint) {
     if (typeof YT === 'undefined') return; // por si el mensaje bruto llegara antes de que cargue el script de la API
     if (stateCode === YT.PlayerState.PLAYING) { clipHasStarted = true; return; }
-    if (stateCode === YT.PlayerState.ENDED) { tryAutoAdvance(); return; }
+    // Bug real encontrado al probarlo: loadVideoById reutiliza el mismo
+    // reproductor/iframe para el siguiente corte, y un evento ENDED que en
+    // realidad pertenecía al corte YA ABANDONADO puede llegar tarde, justo
+    // después de haber empezado a cargar el nuevo — antes de que este haya
+    // tenido ocasión de reproducirse. Sin la misma guarda que ya usa PAUSED
+    // (exigir un PLAYING real de ESTE corte primero), ese ENDED atrasado
+    // disparaba un avance inmediato — y si el siguiente corte recibía a su
+    // vez otro ENDED atrasado de la misma manera, la cadena de avances
+    // podía llegar a saltar hasta el último corte de la lista casi de
+    // golpe, dejando la reproducción parada ahí.
+    if (stateCode === YT.PlayerState.ENDED) { if (clipHasStarted) tryAutoAdvance(); return; }
     if (stateCode === YT.PlayerState.PAUSED && clipHasStarted && currentVideoParams && Number.isFinite(currentVideoParams.endSec)) {
       const currentTime = Number.isFinite(currentTimeHint) ? currentTimeHint : (ytPlayer ? ytPlayer.getCurrentTime() : NaN);
       if (!Number.isFinite(currentTime)) return;
