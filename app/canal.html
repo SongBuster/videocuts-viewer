@@ -580,14 +580,53 @@
   // replayVideo) exige haber visto de verdad un PLAYING de ESTE corte antes
   // de fiarnos de un PAUSED para decidir que se acabó.
   let clipHasStarted = false;
-  function handlePlayerStateChange(e) {
-    if (e.data === YT.PlayerState.PLAYING) { clipHasStarted = true; return; }
-    if (e.data === YT.PlayerState.ENDED) { tryAutoAdvance(); return; }
-    if (e.data === YT.PlayerState.PAUSED && clipHasStarted && currentVideoParams && Number.isFinite(currentVideoParams.endSec)) {
-      const reachedEnd = ytPlayer.getCurrentTime() >= currentVideoParams.endSec - 0.5;
-      if (reachedEnd) tryAutoAdvance();
+
+  // stateCode: mismos códigos numéricos que YT.PlayerState (1 jugando, 0
+  // acabado, 2 pausado...). currentTimeHint: si ya se conoce el tiempo
+  // reproducido (viene en el mensaje bruto de infoDelivery, ver más abajo),
+  // se usa directamente en vez de volver a preguntarle a ytPlayer.
+  function processPlayerState(stateCode, currentTimeHint) {
+    if (typeof YT === 'undefined') return; // por si el mensaje bruto llegara antes de que cargue el script de la API
+    if (stateCode === YT.PlayerState.PLAYING) { clipHasStarted = true; return; }
+    if (stateCode === YT.PlayerState.ENDED) { tryAutoAdvance(); return; }
+    if (stateCode === YT.PlayerState.PAUSED && clipHasStarted && currentVideoParams && Number.isFinite(currentVideoParams.endSec)) {
+      const currentTime = Number.isFinite(currentTimeHint) ? currentTimeHint : (ytPlayer ? ytPlayer.getCurrentTime() : NaN);
+      if (!Number.isFinite(currentTime)) return;
+      if (currentTime >= currentVideoParams.endSec - 0.5) {
+        tryAutoAdvance();
+      } else if (videoModalAutoAdvance.checked) {
+        // Pausa manual de verdad (no ha llegado al final del corte todavía):
+        // el usuario se ha parado a mirar la jugada con calma, no quiere
+        // que salte solo al siguiente corte en cuanto reanude sin avisar.
+        // Se desactiva la casilla en vez de dejarla marcada en silencio.
+        videoModalAutoAdvance.checked = false;
+      }
     }
   }
+
+  function handlePlayerStateChange(e) { processPlayerState(e.data); }
+
+  // Red de seguridad adicional, en paralelo al callback de arriba: en
+  // navegadores con bloqueadores de rastreo (Brave Shields y similares) que
+  // cortan las llamadas de telemetría de YouTube, el envoltorio oficial de
+  // la API se queda a veces atascado reintentando esa llamada bloqueada y
+  // nunca llega a invocar nuestro onStateChange — aunque el iframe siga
+  // mandando sus propios mensajes por postMessage con normalidad. Escuchar
+  // esos mensajes en bruto, nosotros mismos, no depende de que el
+  // envoltorio oficial no se haya colgado. Si las dos vías funcionan (caso
+  // normal), esto simplemente repite el mismo resultado sin problema:
+  // tryAutoAdvance() ya se protege a sí mismo con advanceFired.
+  window.addEventListener('message', (event) => {
+    if (event.origin !== 'https://www.youtube.com') return;
+    let data;
+    try { data = JSON.parse(event.data); } catch { return; }
+    if (!data || !data.event) return;
+    if (data.event === 'infoDelivery' && data.info && typeof data.info.playerState === 'number') {
+      processPlayerState(data.info.playerState, data.info.currentTime);
+    } else if (data.event === 'onStateChange' && typeof data.info === 'number') {
+      processPlayerState(data.info);
+    }
+  });
 
   // Sin la API de YouTube (modo de reserva, iframe simple) no hay
   // forma de saber el estado real del vídeo — ahí sí hace falta un
