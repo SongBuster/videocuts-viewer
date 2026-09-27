@@ -287,6 +287,17 @@ button { font-family: inherit; }
      interesa más aprovechar la pantalla que dejar aire alrededor. */
   .video-modal-overlay { padding: 8px; }
 }
+/* Pantallas bajas (típicamente el móvil en horizontal): a ancho completo el
+   vídeo 16:9 + cabecera + toggles no cabían en el alto disponible y tocaba
+   hacer scroll para verlo entero. Aquí se ancla al alto disponible (bar y
+   toggles con su tamaño fijo, el vídeo se lleva el resto) y el ancho del
+   vídeo se calcula a partir de ese alto vía aspect-ratio, no al revés. */
+@media (max-height: 500px) {
+  .video-modal-overlay { padding: 6px; }
+  .video-modal { width: auto; max-width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+  .video-modal-bar, .video-modal-toggles { flex: 0 0 auto; }
+  .video-modal-frame { flex: 1 1 auto; min-height: 0; width: auto; max-width: 100%; align-self: center; }
+}
 .video-modal {
   /* Antes se podía arrastrar el borde para agrandarlo (hasta 1400px, con el
      ancho recordado entre visitas) porque 900px se quedaba corto — ahora
@@ -336,21 +347,25 @@ button { font-family: inherit; }
 .video-modal-goalzone-overlay svg { display: block; width: 100%; height: auto; }
 .video-modal-frame { position: relative; aspect-ratio: 16 / 9; background: #000; }
 .video-modal-frame iframe, .video-modal-frame > div { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
+.video-modal-clickcatch { cursor: pointer; }
 /* Información del lanzamiento superpuesta sobre el propio vídeo (en vez de
    debajo, en un bloque aparte) — mismo motivo de especificidad que la zona
    de portería justo arriba: sin "top:auto; height:auto" se queda a pantalla
-   completa por la regla genérica de ".video-modal-frame > div". El
-   degradado es para que el texto se lea encima de cualquier fotograma. */
+   completa por la regla genérica de ".video-modal-frame > div". Fondo
+   uniforme (no degradado hacia transparente) para que el texto se lea igual
+   de bien pase lo que pase detrás; el desenfoque es un extra que se
+   degrada sin problema donde no haya soporte. */
 .video-modal-frame > .video-modal-info-overlay {
   top: auto; left: 0; right: 0; bottom: 0; height: auto;
-  padding: 30px 14px 10px;
-  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.55) 60%, transparent 100%);
-  display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 16px 12px;
+  background: rgba(8,9,12,0.72);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  display: flex; flex-direction: column; gap: 4px;
   pointer-events: none; z-index: 1;
 }
 .video-modal-frame > .video-modal-info-overlay[hidden] { display: none; }
-.video-modal-info-line { color: var(--text-primary); font-size: 13px; line-height: 1.4; }
-.video-modal-info-line.video-modal-info-context { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+.video-modal-info-line { color: var(--text-primary); font-size: 15px; line-height: 1.4; }
+.video-modal-info-line.video-modal-info-context { color: var(--text-secondary); font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; }
 .result-pill {
   display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 700;
   text-transform: uppercase; letter-spacing: .03em; flex-shrink: 0;

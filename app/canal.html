@@ -185,6 +185,7 @@
       </div>
       <div class="video-modal-frame">
         <div id="videoModalPlayer"></div>
+        <div class="video-modal-clickcatch" id="videoModalClickCatch" title="Pausar / reanudar"></div>
         <div class="video-modal-info-overlay" id="videoModalInfo"></div>
         <div class="video-modal-goalzone-overlay" id="videoModalGoalZoneOverlay" hidden></div>
       </div>
@@ -369,6 +370,17 @@
   videoModalNext.addEventListener('click', () => goToVideo(1));
   videoModalReplay.addEventListener('click', replayVideo);
 
+  // Sin controles nativos de YouTube (controls:0, ver loadIntoPlayer) ya no
+  // hay botón de pausa propio del reproductor — pulsar sobre el vídeo lo
+  // pausa/reanuda a través de la API. En modo de reserva (sin API) no hay
+  // nada que hacer aquí, se pierde esa posibilidad como el resto de
+  // limitaciones ya conocidas de ese modo.
+  document.getElementById('videoModalClickCatch').addEventListener('click', () => {
+    if (fallbackMode || !ytPlayer) return;
+    if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
+    else ytPlayer.playVideo();
+  });
+
   // Resultado → clase de la pill de color: perspectiva jugador (gol/parada/
   // fuera, tres colores, igual que en los Clips) o perspectiva portero
   // (good/bad — una parada es su éxito, un gol en contra su fallo). La
@@ -502,7 +514,17 @@
   }, 3000);
 
   function renderFallbackIframe({ youtubeId, startSec, endSec }) {
-    const params = new URLSearchParams({ start: String(startSec), autoplay: '1', rel: '0', r: String(Date.now()) });
+    // controls=0 quita el botón de pausa y la barra de progreso propios de
+    // YouTube — con cortes tan breves, esa chrome tapaba el propio
+    // lanzamiento. iv_load_policy/modestbranding limpian el resto de
+    // superposiciones (tarjetas, logo). Sin la API de YouTube (aquí, modo de
+    // reserva) no hay forma de pausar/reanudar a mano una vez quitados los
+    // controles nativos — se asume, como el resto de limitaciones del modo
+    // de reserva ya documentadas más arriba.
+    const params = new URLSearchParams({
+      start: String(startSec), autoplay: '1', rel: '0', controls: '0',
+      modestbranding: '1', iv_load_policy: '3', r: String(Date.now())
+    });
     if (Number.isFinite(endSec) && endSec > startSec) params.set('end', String(endSec));
     document.getElementById('videoModalPlayer').innerHTML =
       `<iframe src="https://www.youtube.com/embed/${youtubeId}?${params.toString()}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
@@ -520,7 +542,10 @@
   }
 
   function loadIntoPlayer({ youtubeId, startSec, endSec }) {
-    const vars = { start: startSec, autoplay: 1, rel: 0 };
+    // Sin controles nativos (ver renderFallbackIframe) — pausar/reanudar a
+    // mano pasa a hacerse pulsando sobre el propio vídeo, ver
+    // videoModalClickCatch más abajo.
+    const vars = { start: startSec, autoplay: 1, rel: 0, controls: 0, modestbranding: 1, iv_load_policy: 3 };
     if (Number.isFinite(endSec) && endSec > startSec) vars.end = endSec;
     try {
       if (!ytPlayer) {
