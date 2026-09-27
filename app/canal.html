@@ -473,8 +473,13 @@
   // de privacidad — Brave Shields, uBlock, etc. — bloquean con
   // frecuencia justo este script de YouTube). Si no responde en unos
   // segundos, en vez de dejar el vídeo en negro para siempre, se cae a
-  // un <iframe> normal: se pierde "volver a ver" y el auto-avance,
-  // pero al menos se ve el vídeo.
+  // un <iframe> normal (ver renderFallbackIframe/enterFallbackMode): se
+  // pierde "volver a ver" sin recargar el iframe entero y, sobre todo,
+  // cualquier forma fiable de saber si el vídeo está pausado o no — un
+  // iframe suelto con enablejsapi en la URL no manda sus eventos de estado
+  // sin el intercambio inicial que hace el envoltorio oficial de la API,
+  // así que ahí "Pasar automáticamente al siguiente vídeo" se desactiva por
+  // completo en vez de avanzar a ciegas sin importarle si está pausado.
   let ytPlayer = null;
   let ytApiReady = false;
   let fallbackMode = false;
@@ -490,13 +495,30 @@
     }
   };
 
+  // Entrar en modo de reserva deshabilita, con su propia explicación, todo
+  // lo que dependía de saber el estado real del vídeo: "Volver a ver" (ya
+  // lo hacía) y "Pasar automáticamente al siguiente vídeo al terminar" —
+  // probado con la API bloqueada de verdad (ver commit anterior): un
+  // iframe suelto con enablejsapi en la URL NO llega a mandar sus eventos
+  // de estado sin el intercambio inicial que hace el envoltorio oficial de
+  // la API, así que aquí no hay ninguna señal fiable de si el vídeo está
+  // pausado o no — mejor no avanzar nunca a ciegas (le daría igual que
+  // estuviera pausado) que avanzar en el momento equivocado.
+  function enterFallbackMode() {
+    if (fallbackMode) return;
+    fallbackMode = true;
+    const reason = 'No disponible: no se pudo cargar la API de YouTube (¿bloqueador de anuncios?)';
+    videoModalReplay.title = reason;
+    videoModalAutoAdvance.checked = false;
+    videoModalAutoAdvance.disabled = true;
+    videoModalAutoAdvance.parentElement.title = reason;
+  }
+
   setTimeout(() => {
     if (ytApiReady) return;
-    fallbackMode = true;
-    videoModalReplay.title = 'No disponible: no se pudo cargar la API de YouTube (¿bloqueador de anuncios?)';
+    enterFallbackMode();
     if (pendingVideo) {
       renderFallbackIframe(pendingVideo);
-      scheduleFallbackAdvance(pendingVideo.startSec, pendingVideo.endSec);
       pendingVideo = null;
     }
   }, 3000);
@@ -508,9 +530,9 @@
     // ni el postMessage directo conseguían pausar/reanudar — sin controles
     // nativos, eso dejaba el vídeo sin ninguna forma de pausarlo. Mejor
     // conservar el botón de pausa y la barra de progreso propios de YouTube,
-    // aunque añadan algo de chrome sobre cortes tan breves.
-    // iv_load_policy/modestbranding se mantienen: limpian tarjetas/logo sin
-    // afectar a la pausa.
+    // aunque añadan algo de chrome sobre cortes tan breves. iv_load_policy/
+    // modestbranding se mantienen: limpian tarjetas/logo sin afectar a la
+    // pausa.
     const params = new URLSearchParams({
       start: String(startSec), autoplay: '1', rel: '0',
       modestbranding: '1', iv_load_policy: '3', r: String(Date.now())
@@ -544,9 +566,8 @@
           events: {
             onStateChange: handlePlayerStateChange,
             onError: () => {
-              fallbackMode = true;
+              enterFallbackMode();
               renderFallbackIframe({ youtubeId, startSec, endSec });
-              scheduleFallbackAdvance(startSec, endSec);
             }
           }
         });
@@ -554,9 +575,8 @@
         ytPlayer.loadVideoById({ videoId: youtubeId, startSeconds: startSec, endSeconds: vars.end });
       }
     } catch {
-      fallbackMode = true;
+      enterFallbackMode();
       renderFallbackIframe({ youtubeId, startSec, endSec });
-      scheduleFallbackAdvance(startSec, endSec);
     }
   }
 
@@ -606,16 +626,20 @@
 
   function handlePlayerStateChange(e) { processPlayerState(e.data); }
 
-  // Red de seguridad adicional, en paralelo al callback de arriba: en
+  // Vía de detección adicional, en paralelo al callback de arriba: en
   // navegadores con bloqueadores de rastreo (Brave Shields y similares) que
   // cortan las llamadas de telemetría de YouTube, el envoltorio oficial de
-  // la API se queda a veces atascado reintentando esa llamada bloqueada y
-  // nunca llega a invocar nuestro onStateChange — aunque el iframe siga
+  // la API puede quedarse atascado reintentando esa llamada bloqueada y no
+  // llegar a invocar nunca nuestro onStateChange — aunque el iframe siga
   // mandando sus propios mensajes por postMessage con normalidad. Escuchar
   // esos mensajes en bruto, nosotros mismos, no depende de que el
-  // envoltorio oficial no se haya colgado. Si las dos vías funcionan (caso
-  // normal), esto simplemente repite el mismo resultado sin problema:
-  // tryAutoAdvance() ya se protege a sí mismo con advanceFired.
+  // envoltorio oficial no se haya colgado. Esto SOLO aplica al reproductor
+  // de la API (enablejsapi ya viene activado ahí) — el iframe de reserva de
+  // más abajo no lo lleva y, comprobado, no manda estos mensajes sin el
+  // intercambio inicial que hace el envoltorio oficial (ver
+  // enterFallbackMode). Si además funciona la vía oficial (caso normal, sin
+  // nada bloqueado), esto simplemente repite el mismo resultado sin
+  // problema: tryAutoAdvance ya se protege con advanceFired.
   window.addEventListener('message', (event) => {
     if (event.origin !== 'https://www.youtube.com') return;
     let data;
@@ -628,25 +652,11 @@
     }
   });
 
-  // Sin la API de YouTube (modo de reserva, iframe simple) no hay
-  // forma de saber el estado real del vídeo — ahí sí hace falta un
-  // temporizador por duración conocida, con la limitación de que no
-  // distingue una pausa manual de haber llegado al final.
-  let advanceTimer = null;
-
-  function scheduleFallbackAdvance(startSec, endSec) {
-    if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
-    if (!Number.isFinite(endSec) || endSec <= startSec) return;
-    const ms = (endSec - startSec) * 1000 + 400;
-    advanceTimer = setTimeout(tryAutoAdvance, ms);
-  }
-
   function replayVideo() {
     advanceFired = false;
     clipHasStarted = false; // igual que al cargar un corte nuevo: no fiarse de un PAUSED hasta ver un PLAYING real tras el seek
     if (fallbackMode) {
       renderFallbackIframe(currentVideoParams);
-      if (currentVideoParams) scheduleFallbackAdvance(currentVideoParams.startSec, currentVideoParams.endSec);
     } else if (ytPlayer) {
       ytPlayer.seekTo(currentClipStart, true);
       ytPlayer.playVideo();
@@ -661,7 +671,6 @@
 
   function closeVideoModal() {
     videoModalOverlay.hidden = true;
-    if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
     if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo(); // corta la reproducción al cerrar
     else if (fallbackMode) document.getElementById('videoModalPlayer').innerHTML = ''; // sin API no hay pauseVideo: se quita el iframe
   }
@@ -684,7 +693,7 @@
     advanceFired = false;
     clipHasStarted = false;
 
-    if (fallbackMode) { renderFallbackIframe(currentVideoParams); scheduleFallbackAdvance(startSec, endSec); }
+    if (fallbackMode) renderFallbackIframe(currentVideoParams);
     else if (ytApiReady) loadIntoPlayer(currentVideoParams);
     else pendingVideo = currentVideoParams;
 
