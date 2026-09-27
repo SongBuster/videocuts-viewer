@@ -185,7 +185,6 @@
       </div>
       <div class="video-modal-frame">
         <div id="videoModalPlayer"></div>
-        <div class="video-modal-clickcatch" id="videoModalClickCatch" title="Pausar / reanudar"></div>
         <div class="video-modal-info-overlay" id="videoModalInfo"></div>
         <div class="video-modal-goalzone-overlay" id="videoModalGoalZoneOverlay" hidden></div>
       </div>
@@ -370,38 +369,6 @@
   videoModalNext.addEventListener('click', () => goToVideo(1));
   videoModalReplay.addEventListener('click', replayVideo);
 
-  // Sin controles nativos de YouTube (controls:0, ver loadIntoPlayer) ya no
-  // hay botón de pausa propio del reproductor — pulsar sobre el vídeo lo
-  // pausa/reanuda a través de la API. En modo de reserva (sin API) no hay
-  // nada que hacer aquí, se pierde esa posibilidad como el resto de
-  // limitaciones ya conocidas de ese modo.
-  //
-  // Bloqueadores de rastreo (Brave Shields y similares, que cortan por
-  // defecto las llamadas de telemetría de YouTube como .../log_event) pueden
-  // dejar a medias el canal interno de mensajes de la propia API de
-  // YouTube — el vídeo se ve y se reproduce con normalidad, pero
-  // ytPlayer.pauseVideo()/playVideo() no llegan a hacer nada porque el
-  // envoltorio JS de YouTube se queda atascado reintentando esa llamada
-  // bloqueada. Como red de seguridad, además de la API se manda el mismo
-  // comando directamente por postMessage al iframe — es literalmente lo que
-  // la API hace por dentro, pero sin pasar por su envoltorio si este se ha
-  // quedado colgado.
-  function postPlayerCommand(func) {
-    try {
-      const iframe = ytPlayer && ytPlayer.getIframe && ytPlayer.getIframe();
-      if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args: '' }), '*');
-      }
-    } catch {}
-  }
-  document.getElementById('videoModalClickCatch').addEventListener('click', () => {
-    if (fallbackMode || !ytPlayer) return;
-    const isPlaying = ytPlayer.getPlayerState() === YT.PlayerState.PLAYING;
-    const func = isPlaying ? 'pauseVideo' : 'playVideo';
-    ytPlayer[func]();
-    postPlayerCommand(func);
-  });
-
   // Resultado → clase de la pill de color: perspectiva jugador (gol/parada/
   // fuera, tres colores, igual que en los Clips) o perspectiva portero
   // (good/bad — una parada es su éxito, un gol en contra su fallo). La
@@ -535,15 +502,17 @@
   }, 3000);
 
   function renderFallbackIframe({ youtubeId, startSec, endSec }) {
-    // controls=0 quita el botón de pausa y la barra de progreso propios de
-    // YouTube — con cortes tan breves, esa chrome tapaba el propio
-    // lanzamiento. iv_load_policy/modestbranding limpian el resto de
-    // superposiciones (tarjetas, logo). Sin la API de YouTube (aquí, modo de
-    // reserva) no hay forma de pausar/reanudar a mano una vez quitados los
-    // controles nativos — se asume, como el resto de limitaciones del modo
-    // de reserva ya documentadas más arriba.
+    // controls=0 se probó y se quitó: en Brave (Shields) y bloqueadores
+    // similares el envoltorio JS de YouTube puede quedarse atascado
+    // reintentando una llamada de telemetría bloqueada, y entonces ni la API
+    // ni el postMessage directo conseguían pausar/reanudar — sin controles
+    // nativos, eso dejaba el vídeo sin ninguna forma de pausarlo. Mejor
+    // conservar el botón de pausa y la barra de progreso propios de YouTube,
+    // aunque añadan algo de chrome sobre cortes tan breves.
+    // iv_load_policy/modestbranding se mantienen: limpian tarjetas/logo sin
+    // afectar a la pausa.
     const params = new URLSearchParams({
-      start: String(startSec), autoplay: '1', rel: '0', controls: '0',
+      start: String(startSec), autoplay: '1', rel: '0',
       modestbranding: '1', iv_load_policy: '3', r: String(Date.now())
     });
     if (Number.isFinite(endSec) && endSec > startSec) params.set('end', String(endSec));
@@ -563,10 +532,9 @@
   }
 
   function loadIntoPlayer({ youtubeId, startSec, endSec }) {
-    // Sin controles nativos (ver renderFallbackIframe) — pausar/reanudar a
-    // mano pasa a hacerse pulsando sobre el propio vídeo, ver
-    // videoModalClickCatch más abajo.
-    const vars = { start: startSec, autoplay: 1, rel: 0, controls: 0, modestbranding: 1, iv_load_policy: 3 };
+    // controls:0 se probó y se quitó (ver renderFallbackIframe): rompía la
+    // pausa en Brave/bloqueadores similares sin ganancia real a cambio.
+    const vars = { start: startSec, autoplay: 1, rel: 0, modestbranding: 1, iv_load_policy: 3 };
     if (Number.isFinite(endSec) && endSec > startSec) vars.end = endSec;
     try {
       if (!ytPlayer) {

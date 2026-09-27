@@ -347,7 +347,6 @@ button { font-family: inherit; }
 .video-modal-goalzone-overlay svg { display: block; width: 100%; height: auto; }
 .video-modal-frame { position: relative; aspect-ratio: 16 / 9; background: #000; }
 .video-modal-frame iframe, .video-modal-frame > div { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
-.video-modal-clickcatch { cursor: pointer; }
 /* Información del lanzamiento superpuesta sobre el propio vídeo (en vez de
    debajo, en un bloque aparte) — mismo motivo de especificidad que la zona
    de portería justo arriba: sin "top:auto; height:auto" se queda a pantalla
