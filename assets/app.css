@@ -282,8 +282,17 @@ button { font-family: inherit; }
   display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;
 }
 .video-modal-overlay[hidden] { display: none; }
+@media (max-width: 640px) {
+  /* En móvil el margen fijo de 20px le resta ancho útil al vídeo — aquí
+     interesa más aprovechar la pantalla que dejar aire alrededor. */
+  .video-modal-overlay { padding: 8px; }
+}
 .video-modal {
-  width: 100%; max-width: 900px; background: #111; border-radius: 10px; position: relative;
+  /* Antes se podía arrastrar el borde para agrandarlo (hasta 1400px, con el
+     ancho recordado entre visitas) porque 900px se quedaba corto — ahora
+     directamente abre más grande por defecto y no hace falta redimensionar
+     a mano. */
+  width: 100%; max-width: 1100px; background: var(--surface); border-radius: 10px; position: relative;
   /* En móvil apaisado (poca altura) el vídeo a 16:9 + cabecera + info puede
      no caber en la pantalla — sin este límite y su scroll, el contenido se
      salía por arriba/abajo del todo y ni el botón de cerrar quedaba
@@ -304,14 +313,17 @@ button { font-family: inherit; }
 .video-modal-navbtn:disabled { opacity: .35; cursor: default; }
 .video-modal-openext { color: var(--accent-text); font-size: 12px; text-decoration: none; }
 .video-modal-openext:hover { text-decoration: underline; }
-.video-modal-close { background: none; border: none; color: #888; font-size: 16px; cursor: pointer; padding: 4px 8px; line-height: 1; }
-.video-modal-close:hover { color: #fff; }
+.video-modal-close {
+  background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer;
+  padding: 4px 8px; line-height: 1; border-radius: 999px;
+}
+.video-modal-close:hover { color: var(--text-primary); background: rgba(255,255,255,0.08); }
 .video-modal-toggles {
   display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 7px 12px; background: var(--surface);
-  border-bottom: 1px solid #222;
+  border-bottom: 1px solid var(--border);
 }
-.video-modal-toggle { display: flex; align-items: center; gap: 7px; color: #999; font-size: 11px; cursor: pointer; }
-.video-modal-toggle input { cursor: pointer; }
+.video-modal-toggle { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 11px; cursor: pointer; }
+.video-modal-toggle input { cursor: pointer; accent-color: var(--accent); }
 /* Más específico que ".video-modal-frame > div" (pensada para el
    reproductor, inset:0 a pantalla completa) para que no se la lleve por
    delante y la deje también a pantalla completa. */
@@ -319,28 +331,34 @@ button { font-family: inherit; }
   position: absolute; top: auto; left: auto; right: 10px; bottom: 10px;
   width: 84px; height: auto;
   background: rgba(10,10,10,0.72); border-radius: 6px; padding: 4px;
-  pointer-events: none; z-index: 1;
+  pointer-events: none; z-index: 1; transition: bottom .15s;
 }
 .video-modal-goalzone-overlay svg { display: block; width: 100%; height: auto; }
-.video-modal-resize {
-  position: absolute; top: 0; bottom: 0; right: 0; width: 12px; cursor: ew-resize; z-index: 1;
-  touch-action: none;
-}
-.video-modal-resize::after {
-  content: ''; position: absolute; top: 50%; right: 3px; width: 4px; height: 40px;
-  transform: translateY(-50%); border-radius: 2px;
-  background: repeating-linear-gradient(to bottom, #555 0, #555 2px, transparent 2px, transparent 6px);
-}
-.video-modal-resize:hover::after { background: repeating-linear-gradient(to bottom, #999 0, #999 2px, transparent 2px, transparent 6px); }
-@media (max-width: 860px) {
-  .video-modal-resize { display: none; } /* redimensionar a mano no aporta en móvil */
-}
 .video-modal-frame { position: relative; aspect-ratio: 16 / 9; background: #000; }
 .video-modal-frame iframe, .video-modal-frame > div { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
-.video-modal-info { padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 4px; }
-.video-modal-info-line { color: #e0e0e0; font-size: 13px; line-height: 1.4; }
-.video-modal-info-line.video-modal-info-context { color: #898781; font-size: 12px; }
-.video-modal-info-line .is-gol { color: #0ca30c; font-weight: 600; }
-.video-modal-info-line .is-parada { color: #898781; }
-.video-modal-info-line .is-good { color: #0ca30c; font-weight: 600; }
-.video-modal-info-line .is-bad { color: #d03b3b; font-weight: 600; }
+/* Información del lanzamiento superpuesta sobre el propio vídeo (en vez de
+   debajo, en un bloque aparte) — mismo motivo de especificidad que la zona
+   de portería justo arriba: sin "top:auto; height:auto" se queda a pantalla
+   completa por la regla genérica de ".video-modal-frame > div". El
+   degradado es para que el texto se lea encima de cualquier fotograma. */
+.video-modal-frame > .video-modal-info-overlay {
+  top: auto; left: 0; right: 0; bottom: 0; height: auto;
+  padding: 30px 14px 10px;
+  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.55) 60%, transparent 100%);
+  display: flex; flex-direction: column; gap: 3px;
+  pointer-events: none; z-index: 1;
+}
+.video-modal-frame > .video-modal-info-overlay[hidden] { display: none; }
+.video-modal-info-line { color: var(--text-primary); font-size: 13px; line-height: 1.4; }
+.video-modal-info-line.video-modal-info-context { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+.result-pill {
+  display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .03em; flex-shrink: 0;
+  /* Gris neutro por defecto — p.ej. "Fuera" en la pestaña de Portero no es
+     ni éxito ni fallo del portero, así que no lleva modificador de color. */
+  background: rgba(255,255,255,0.08); color: var(--text-secondary);
+}
+.result-pill.gol, .result-pill.good { background: rgba(12,163,12,0.16); color: #4fd37a; }
+.result-pill.parada { background: rgba(57,135,229,0.16); color: #7bb1ef; }
+.result-pill.fuera { background: rgba(217,89,38,0.16); color: #f0906a; }
+.result-pill.bad { background: rgba(208,59,59,0.16); color: #f27a7a; }
