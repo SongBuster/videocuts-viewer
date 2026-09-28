@@ -92,7 +92,7 @@
 <script type="module">
   import { escapeHtml, formatDateEs } from '../assets/app.js'
   import {
-    requireSession, logout, getOwnedChannels, createChannel,
+    requireSession, logout, getOwnedChannels, createChannel, deleteChannel,
     createInvite, revokeInvite, listChannelInvites, listChannelViewers, revokeAccess
   } from '../assets/supabase.js'
 
@@ -154,6 +154,9 @@
         <div class="admin-section">
           <div class="admin-section-title">Invitaciones</div>
           <div class="invites-list"><div class="admin-empty">Cargando…</div></div>
+        </div>
+        <div class="admin-section" style="text-align:right;">
+          <button type="button" class="link-btn danger" data-action="delete-channel">🗑 Borrar canal</button>
         </div>`
       channelsEl.appendChild(card)
 
@@ -234,6 +237,26 @@
         try {
           await revokeAccess(channel.id, btn.dataset.user)
           await refreshViewers()
+        } catch (err) {
+          alert(err.message)
+          btn.disabled = false
+        }
+      })
+
+      card.querySelector('[data-action="delete-channel"]').addEventListener('click', async (e) => {
+        const btn = e.currentTarget
+        const sure = confirm(
+          `¿Borrar el canal "${channel.name}"? Esto borra también, para siempre, todo lo publicado en él ` +
+          `(todos sus datasets) y el acceso de cualquiera que estuviera invitado. No se puede deshacer.`
+        )
+        if (!sure) return
+        btn.disabled = true
+        try {
+          await deleteChannel(channel.id)
+          card.remove()
+          if (!channelsEl.querySelector('[data-channel]')) {
+            channelsEl.innerHTML = '<div class="empty-state">Todavía no tienes ningún canal propio. Crea uno arriba para empezar a invitar gente.</div>'
+          }
         } catch (err) {
           alert(err.message)
           btn.disabled = false

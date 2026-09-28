@@ -175,3 +175,12 @@ export async function revokeAccess(channelId, userId) {
     .eq('user_id', userId)
   if (error) throw new Error(error.message)
 }
+
+// Borra el canal entero — irreversible. RLS (channels_delete_own) exige
+// que el que llama sea el dueño; sus datasets/accesos/invitaciones se
+// borran solos en cascada (on delete cascade en schema.sql), no hace falta
+// borrarlos aparte primero.
+export async function deleteChannel(channelId) {
+  const { error } = await supabase.from('channels').delete().eq('id', channelId)
+  if (error) throw new Error(error.message)
+}
