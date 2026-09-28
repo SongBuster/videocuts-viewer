@@ -747,8 +747,10 @@
     videoModalOpenExt.href = `https://www.youtube.com/watch?v=${youtubeId}&t=${startSec}s`;
 
     // Dos líneas en forma de frase, sin nombres de campo: la primera
-    // sitúa la jugada (partido/parte/tiempo/puesto), la segunda cuenta
-    // qué pasó (jugador — mano, tipo — resultado, con color).
+    // sitúa la jugada (partido/parte/tiempo/puesto/fase de juego), la
+    // segunda cuenta qué pasó (jugador — mano, tipo — resultado, con
+    // color). "Fase de juego" no existe en los CSV de portero — se cae
+    // sola del filter(Boolean), igual que "Puesto" cuando falta.
     const resultado = record['Resultado'] || '';
     // No todos los CSV de portero llevan la columna "Puesto" (depende de
     // qué columnas fijas se marcaran al configurar la exportación en
@@ -758,7 +760,7 @@
     const pillClass = resultPillClass(resultado, isPortero);
     const playerLabel = record[COL_PLAYER] ? parsePlayer(record[COL_PLAYER]).label : '';
 
-    const line1 = [record[COL_CODE], record['Parte'], record['Tiempo de partido'], record[COL_PUESTO]]
+    const line1 = [record[COL_CODE], record['Parte'], record['Tiempo de partido'], record[COL_PUESTO], record['Fase de juego']]
       .filter(Boolean).map(escapeHtml).join(' · ');
 
     const manoTipo = [record['Mano'], record['Tipo de lanzamiento']].filter(Boolean).join(', ');
