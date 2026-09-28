@@ -288,18 +288,17 @@ button { font-family: inherit; }
   .video-modal-overlay { padding: 8px; }
 }
 /* Pantallas bajas (típicamente el móvil en horizontal): a ancho completo el
-   vídeo 16:9 + cabecera + toggles no cabían en el alto disponible y tocaba
-   hacer scroll para verlo entero. Aquí se ancla al alto disponible (bar y
-   toggles con su tamaño fijo, el vídeo se lleva el resto) y el ancho del
-   vídeo se calcula a partir de ese alto vía aspect-ratio, no al revés. */
-/* Apaisado (pantalla baja): el vídeo 16:9 limitado por el alto disponible
-   nunca llega a ocupar todo el ancho — en vez de dejar ese hueco vacío a los
-   lados, la info pasa a vivir ahí, como panel lateral junto al vídeo (ver
-   .video-modal-body más abajo, columna por defecto y fila aquí). */
+   vídeo 16:9 + cabecera no cabían en el alto disponible y tocaba hacer
+   scroll para verlo entero. Aquí se ancla al alto disponible (bar con su
+   tamaño fijo, el resto se lo lleva .video-modal-body) y el ancho del vídeo
+   se calcula a partir de ese alto vía aspect-ratio, no al revés. Ese mismo
+   vídeo 16:9 limitado por el alto nunca llega a ocupar todo el ancho — en
+   vez de dejar ese hueco vacío al lado, la info pasa a vivir ahí, como
+   panel lateral (columna por defecto, fila aquí — ver .video-modal-body). */
 @media (max-height: 500px) {
   .video-modal-overlay { padding: 6px; }
   .video-modal { width: auto; max-width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
-  .video-modal-bar, .video-modal-toggles { flex: 0 0 auto; }
+  .video-modal-bar { flex: 0 0 auto; }
   .video-modal-body { flex: 1 1 auto; min-height: 0; flex-direction: row; }
   .video-modal-frame { flex: 0 1 auto; width: auto; height: 100%; max-width: 100%; }
   .video-modal-info {
@@ -338,13 +337,11 @@ button { font-family: inherit; }
   padding: 4px 8px; line-height: 1; border-radius: 999px;
 }
 .video-modal-close:hover { color: var(--text-primary); background: rgba(255,255,255,0.08); }
-/* Botones-icono compactos (antes checkboxes con su texto entero al lado —
-   en móvil, sobre todo en horizontal, ese texto era lo que más restaba
-   espacio al vídeo). El texto completo sigue disponible como title. */
-.video-modal-toggles {
-  display: flex; gap: 6px; padding: 6px 12px; background: var(--surface);
-  border-bottom: 1px solid var(--border);
-}
+/* Botones-icono compactos (antes checkboxes con su texto entero al lado, en
+   su propia fila — ahora viven en la misma fila que Anterior/Siguiente,
+   para no gastar una fila entera solo en esto). El texto completo sigue
+   disponible como title. */
+.video-modal-toggles { display: flex; gap: 6px; }
 .video-modal-icontoggle {
   background: transparent; border: 1px solid var(--border); color: var(--text-muted);
   border-radius: 999px; width: 30px; height: 30px; font-size: 14px; line-height: 1;
@@ -352,15 +349,20 @@ button { font-family: inherit; }
 }
 .video-modal-icontoggle[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
 .video-modal-icontoggle:disabled { opacity: .35; cursor: default; }
-.video-modal-goalzone-overlay {
-  position: absolute; right: 10px; bottom: 10px;
+.video-modal-frame { position: relative; aspect-ratio: 16 / 9; background: #000; flex-shrink: 0; }
+.video-modal-frame iframe, .video-modal-frame > div { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
+/* Más específico que la regla genérica de arriba (".video-modal-frame >
+   div", pensada para el reproductor a pantalla completa) para que no se la
+   lleve por delante y la deje también a pantalla completa — eso es
+   justamente lo que pasó al quitar este prefijo en el primer intento: la
+   miniatura de portería se estiraba a ocupar todo el vídeo. */
+.video-modal-frame > .video-modal-goalzone-overlay {
+  position: absolute; top: auto; left: auto; right: 10px; bottom: 10px;
   width: 84px; height: auto;
   background: rgba(10,10,10,0.72); border-radius: 6px; padding: 4px;
   pointer-events: none; z-index: 1;
 }
 .video-modal-goalzone-overlay svg { display: block; width: 100%; height: auto; }
-.video-modal-frame { position: relative; aspect-ratio: 16 / 9; background: #000; flex-shrink: 0; }
-.video-modal-frame iframe, .video-modal-frame > div { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
 /* Antes iba superpuesta al propio vídeo — en pantallas pequeñas tapaba más
    jugada de la que aportaba información. Ahora es un bloque aparte
    (.video-modal-body decide si va debajo o al lado, según el espacio). */

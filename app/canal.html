@@ -174,16 +174,16 @@
           <button type="button" class="video-modal-navbtn" id="videoModalReplay">↻ Volver a ver</button>
           <button type="button" class="video-modal-navbtn" id="videoModalNext">Siguiente ▶</button>
         </div>
+        <div class="video-modal-toggles">
+          <button type="button" class="video-modal-icontoggle" id="videoModalAutoAdvance"
+            aria-pressed="true" title="Pasar automáticamente al siguiente vídeo al terminar">🔁</button>
+          <button type="button" class="video-modal-icontoggle" id="videoModalShowInfo"
+            aria-pressed="false" title="Mostrar información del lanzamiento">ℹ️</button>
+          <button type="button" class="video-modal-icontoggle" id="videoModalShowGoalZone"
+            aria-pressed="false" title="Mostrar zona de portería sobre el vídeo">🥅</button>
+        </div>
         <a id="videoModalOpenExt" href="#" target="_blank" rel="noopener" class="video-modal-openext">Abrir en YouTube ↗</a>
         <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
-      </div>
-      <div class="video-modal-toggles">
-        <button type="button" class="video-modal-icontoggle" id="videoModalAutoAdvance"
-          aria-pressed="true" title="Pasar automáticamente al siguiente vídeo al terminar">🔁</button>
-        <button type="button" class="video-modal-icontoggle" id="videoModalShowInfo"
-          aria-pressed="true" title="Mostrar información del lanzamiento">ℹ️</button>
-        <button type="button" class="video-modal-icontoggle" id="videoModalShowGoalZone"
-          aria-pressed="true" title="Mostrar zona de portería sobre el vídeo">🥅</button>
       </div>
       <div class="video-modal-body">
         <div class="video-modal-frame">
@@ -394,13 +394,12 @@
 
   // Información del lanzamiento y zona de portería, cada una se puede
   // mostrar/ocultar por separado, con la preferencia recordada entre
-  // visitas. La info ya no va superpuesta al vídeo (ver .video-modal-info),
-  // así que la zona de portería no necesita recolocarse según su alto.
+  // visitas — desactivadas por defecto (a diferencia del auto-avance).
   try {
-    setToggle(videoModalShowInfo, localStorage.getItem('vv_showInfoOverlay') !== '0');
+    setToggle(videoModalShowInfo, localStorage.getItem('vv_showInfoOverlay') === '1');
   } catch {}
   try {
-    setToggle(videoModalShowGoalZone, localStorage.getItem('vv_showGoalZoneOverlay') !== '0');
+    setToggle(videoModalShowGoalZone, localStorage.getItem('vv_showGoalZoneOverlay') === '1');
   } catch {}
   let currentGoalCode = null;
   function updateGoalZoneOverlay() {
