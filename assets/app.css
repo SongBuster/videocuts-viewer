@@ -291,20 +291,17 @@ button { font-family: inherit; }
    vídeo 16:9 + cabecera no cabían en el alto disponible y tocaba hacer
    scroll para verlo entero. Aquí se ancla al alto disponible (bar con su
    tamaño fijo, el resto se lo lleva .video-modal-body) y el ancho del vídeo
-   se calcula a partir de ese alto vía aspect-ratio, no al revés. Ese mismo
-   vídeo 16:9 limitado por el alto nunca llega a ocupar todo el ancho — en
-   vez de dejar ese hueco vacío al lado, la info pasa a vivir ahí, como
-   panel lateral (columna por defecto, fila aquí — ver .video-modal-body). */
+   se calcula a partir de ese alto vía aspect-ratio, no al revés. Aquí
+   también, JS mueve .video-modal-info dentro de .video-modal-frame (ver
+   placeInfoBlock en canal.html): con los toggles ya en la misma fila que
+   Anterior/Siguiente hay sitio de sobra para superponerla al vídeo, que es
+   justo donde no estorba en horizontal. */
 @media (max-height: 500px) {
   .video-modal-overlay { padding: 6px; }
   .video-modal { width: auto; max-width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
   .video-modal-bar { flex: 0 0 auto; }
-  .video-modal-body { flex: 1 1 auto; min-height: 0; flex-direction: row; }
-  .video-modal-frame { flex: 0 1 auto; width: auto; height: 100%; max-width: 100%; }
-  .video-modal-info {
-    flex: 1 1 160px; min-width: 140px; max-width: 280px; overflow-y: auto;
-    border-top: none; border-left: 1px solid var(--border);
-  }
+  .video-modal-body { flex: 1 1 auto; min-height: 0; }
+  .video-modal-frame { flex: 1 1 auto; min-height: 0; width: auto; max-width: 100%; height: 100%; align-self: center; }
 }
 .video-modal {
   /* Antes se podía arrastrar el borde para agrandarlo (hasta 1400px, con el
@@ -363,15 +360,25 @@ button { font-family: inherit; }
   pointer-events: none; z-index: 1;
 }
 .video-modal-goalzone-overlay svg { display: block; width: 100%; height: auto; }
-/* Antes iba superpuesta al propio vídeo — en pantallas pequeñas tapaba más
-   jugada de la que aportaba información. Ahora es un bloque aparte
-   (.video-modal-body decide si va debajo o al lado, según el espacio). */
 .video-modal-body { display: flex; flex-direction: column; min-height: 0; }
+/* Por defecto (retrato): bloque normal, debajo del vídeo — superpuesta
+   tapaba más jugada de la que aportaba en pantallas estrechas. */
 .video-modal-info {
   padding: 10px 16px 12px; background: var(--surface);
   display: flex; flex-direction: column; gap: 4px;
 }
 .video-modal-info[hidden] { display: none; }
+/* JS la mueve aquí dentro en apaisado (placeInfoBlock, canal.html): overlay
+   real sobre el vídeo — mismo motivo de especificidad que la zona de
+   portería un poco más arriba, para ganarle a la regla genérica de
+   ".video-modal-frame > div" (pantalla completa) en vez de que se la lleve
+   por delante. */
+.video-modal-frame > .video-modal-info {
+  position: absolute; left: 0; right: 0; bottom: 0; top: auto; height: auto;
+  background: rgba(8,9,12,0.72);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  z-index: 1;
+}
 .video-modal-info-line { color: var(--text-primary); font-size: 15px; line-height: 1.4; }
 .video-modal-info-line.video-modal-info-context { color: var(--text-secondary); font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; }
 .result-pill {

@@ -185,8 +185,8 @@
         <a id="videoModalOpenExt" href="#" target="_blank" rel="noopener" class="video-modal-openext">Abrir en YouTube ↗</a>
         <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
       </div>
-      <div class="video-modal-body">
-        <div class="video-modal-frame">
+      <div class="video-modal-body" id="videoModalBody">
+        <div class="video-modal-frame" id="videoModalFrame">
           <div id="videoModalPlayer"></div>
           <div class="video-modal-goalzone-overlay" id="videoModalGoalZoneOverlay" hidden></div>
         </div>
@@ -367,6 +367,8 @@
   const videoModalShowGoalZone = document.getElementById('videoModalShowGoalZone');
   const videoModalInfo = document.getElementById('videoModalInfo');
   const videoModalGoalZoneOverlay = document.getElementById('videoModalGoalZoneOverlay');
+  const videoModalFrame = document.getElementById('videoModalFrame');
+  const videoModalBody = document.getElementById('videoModalBody');
   document.getElementById('videoModalClose').addEventListener('click', closeVideoModal);
   videoModalOverlay.addEventListener('click', (e) => { if (e.target === videoModalOverlay) closeVideoModal(); });
   videoModalPrev.addEventListener('click', () => goToVideo(-1));
@@ -392,6 +394,21 @@
   function toggleIsOn(btn) { return btn.getAttribute('aria-pressed') === 'true'; }
   function setToggle(btn, on) { btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
 
+  // En horizontal (pantalla baja) la info vive superpuesta al vídeo —
+  // ahí hay sitio de sobra ahora que los toggles no gastan su propia fila.
+  // En vertical, como bloque aparte debajo (superpuesta tapaba más jugada
+  // de la que aportaba en pantallas estrechas). Un mismo nodo, movido de
+  // sitio en el DOM según la orientación — cada caso reutiliza el CSS que
+  // le toca (overlay absoluto dentro de .video-modal-frame, o flujo normal
+  // dentro de .video-modal-body — ver ambas reglas de .video-modal-info).
+  const landscapeModalQuery = window.matchMedia('(max-height: 500px)');
+  function placeInfoBlock() {
+    const target = landscapeModalQuery.matches ? videoModalFrame : videoModalBody;
+    if (videoModalInfo.parentElement !== target) target.appendChild(videoModalInfo);
+    updateGoalZoneOverlay(); // su posición (si toca) depende de si la info se superpone
+  }
+  landscapeModalQuery.addEventListener('change', placeInfoBlock);
+
   // Información del lanzamiento y zona de portería, cada una se puede
   // mostrar/ocultar por separado, con la preferencia recordada entre
   // visitas — desactivadas por defecto (a diferencia del auto-avance).
@@ -407,10 +424,19 @@
     videoModalGoalZoneOverlay.hidden = !show;
     if (!show) return;
     videoModalGoalZoneOverlay.innerHTML = buildGoalZoneOverlaySVG(currentGoalCode);
+    // Si la info se está superponiendo al vídeo (apaisado) y también está
+    // visible, la miniatura sube por encima de su franja de texto en vez de
+    // quedar tapada por ella.
+    const infoOverlapping = videoModalInfo.parentElement === videoModalFrame && !videoModalInfo.hidden;
+    videoModalGoalZoneOverlay.style.bottom = infoOverlapping
+      ? `${Math.round(videoModalInfo.getBoundingClientRect().height) + 10}px`
+      : '10px';
   }
   function updateInfoOverlay() {
     videoModalInfo.hidden = !toggleIsOn(videoModalShowInfo);
+    updateGoalZoneOverlay(); // su posición (si toca) depende de si la info está visible
   }
+  placeInfoBlock();
   videoModalAutoAdvance.addEventListener('click', () => {
     setToggle(videoModalAutoAdvance, !toggleIsOn(videoModalAutoAdvance));
   });
@@ -746,8 +772,7 @@
     currentGoalCode = GOAL_LABEL_TO_CODE[record[COL_GOAL]] || null;
 
     videoModalOverlay.hidden = false;
-    updateInfoOverlay();
-    updateGoalZoneOverlay();
+    updateInfoOverlay(); // pinta/oculta la info y recoloca la zona de portería si toca
   }
 
   const params = new URLSearchParams(location.search)
