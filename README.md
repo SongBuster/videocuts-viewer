@@ -1,38 +1,31 @@
 # videocuts-viewer
 
-Web de estadísticas de VideoCuts, alojada con GitHub Pages. Organizada por
-rival: se elige un equipo y todo lo demás se filtra sobre él.
+Web de estadísticas de VideoCuts, alojada con GitHub Pages (y también
+desplegada en Vercel desde la misma rama `main`). Acceso por invitación:
+cada publicador tiene sus propios canales en Supabase, y cada visor solo ve
+los canales a los que se le ha invitado.
 
 ## Estructura
 
-- `index.html` — portada: lista de rivales de los que hay datos.
-- `rival.html?equipo=...` — página de un rival, con pestañas Jugadores/Portero.
-- `data/lanzamientos/index.json` — índice de todos los CSV publicados (equipo, jornada, tipo, nº de filas).
-- `data/lanzamientos/<id>.json` — datos de un CSV concreto (un equipo + una jornada + un tipo).
-- `generador/` — herramienta local para generar esos ficheros a partir de un CSV (ver más abajo).
+- `app/login.html` — entrada a la app: iniciar sesión o crear cuenta.
+- `app/index.html` — equipos/canales a los que tiene acceso la cuenta.
+- `app/canal.html?id=...&equipo=...` — estadísticas de un equipo, pestañas Jugadores/Portero.
+- `app/admin.html` — panel del publicador: crear canales, invitar, revocar accesos, borrar canales.
+- `app/invite.html?token=...` — canjear una invitación de un solo uso.
+- `app/manifest.json` / `app/sw.js` — para poder "instalar" la app en iOS/Android.
+- `assets/` — CSS/JS compartido por todas las páginas de `app/`.
+- `assets/supabase.js` — cliente de Supabase (auth, canales, datasets, invitaciones).
+- `index.html` (raíz) — redirección a `app/login.html`; no hay más contenido público en la raíz.
 
-> Ficheros de una etapa anterior del proyecto (`partido.html`, `estadisticas.html`,
-> `corte.html`, `data/*.json` de partidos) se mantienen sin tocar por ahora, pero
-> ya no forman parte del flujo principal — se retomarán más adelante.
+## Cómo se publican los datos
 
-## Cómo añadir un partido/jornada nuevo
+Se publican desde VideoCuts (Ajustes → Cuenta en la nube / Estadísticas →
+Publicar en la nube), directamente contra Supabase — no hace falta tocar
+este repositorio para publicar un partido nuevo. Este repo es solo el
+frontend que los consulta.
 
-1. En VideoCuts: Estadísticas → Configurar exportación CSV (con la columna
-   **Equipo** incluida, además de las propias de la plantilla) → Generar CSV.
-2. Abre `generador/index.html` (doble clic, sin instalar nada) — también
-   disponible en `https://songbuster.github.io/videocuts-viewer/generador/`.
-3. Elige el tipo (Jugadores/Portero), sube el CSV y pulsa "Generar datos".
-   El generador consulta el índice ya publicado en la web para no duplicar
-   nada si repites un equipo/jornada.
-4. Se descargan 1-2 ficheros pequeños: `<id>.json` (los datos de ese
-   equipo+jornada) e `index.json` (el índice actualizado). Súbelos a
-   `data/lanzamientos/` en este repositorio y haz commit + push.
-5. El rival ya aparece en la portada.
+## Esquema de la base de datos
 
-## Estado actual (deliberadamente mínimo, en construcción)
-
-La pestaña **Jugadores** de `rival.html` solo muestra de momento cuántos
-eventos hay cargados, a modo de prueba de que el proceso de datos funciona
-— los filtros/gráficos/tabla se irán añadiendo. La pestaña **Portero** está
-vacía a propósito: el CSV de portero de etapas anteriores no encaja con
-este diseño y se redefinirá más adelante.
+Ver `supabase/` en el repositorio `videocuts` (la app de escritorio): ahí
+vive el schema.sql y las migraciones que hay que aplicar en el proyecto de
+Supabase.

@@ -3,49 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>VideoCuts — Estadísticas</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" />
-<link rel="stylesheet" href="assets/app.css" />
+<title>VideoCuts</title>
+<!-- El sitio estático antiguo (rival.html, estadisticas.html, partido.html,
+     generador/, data/) se retiró: todo pasa ahora por app/ (Supabase). Esto
+     solo existe para que un enlace o marcador viejo no caiga en un 404. -->
+<meta http-equiv="refresh" content="0; url=app/login.html" />
+<script>location.replace('app/login.html')</script>
 </head>
 <body>
-  <header class="site-header">
-    <h1>📊 VideoCuts</h1>
-    <span class="meta">Elige el rival para ver sus estadísticas</span>
-  </header>
-  <div class="home-wrap">    
-    <div id="rivals" class="match-grid"></div>
-  </div>
-
-<script type="module">
-  import { fetchJSON, escapeHtml } from './assets/app.js'
-
-  const el = document.getElementById('rivals')
-  try {
-    const index = await fetchJSON('data/lanzamientos/index.json')
-    const byTeam = new Map()
-    for (const entry of index) {
-      const t = byTeam.get(entry.team) || { team: entry.team, rows: 0, jornadas: new Set() }
-      t.rows += entry.rowCount
-      t.jornadas.add(entry.code)
-      byTeam.set(entry.team, t)
-    }
-    const rivals = [...byTeam.values()].sort((a, b) => a.team.localeCompare(b.team))
-
-    if (rivals.length === 0) {
-      el.innerHTML = '<div class="empty-state">Todavía no hay ningún rival cargado. Genera y sube el primer CSV con el generador.</div>'
-    } else {
-      el.innerHTML = rivals.map((r) => `
-        <a class="match-card" href="rival.html?equipo=${encodeURIComponent(r.team)}">
-          <div class="name">${escapeHtml(r.team)}</div>
-          <div class="figures">
-            <span><b>${r.jornadas.size}</b> jornada${r.jornadas.size === 1 ? '' : 's'}</span>
-            <span><b>${r.rows}</b> filas</span>
-          </div>
-        </a>`).join('')
-    }
-  } catch (err) {
-    el.innerHTML = `<div class="empty-state">Todavía no hay ningún rival cargado. Genera y sube el primer CSV con el generador.</div>`
-  }
-</script>
+  <p>Redirigiendo a <a href="app/login.html">la app de VideoCuts</a>…</p>
 </body>
 </html>
