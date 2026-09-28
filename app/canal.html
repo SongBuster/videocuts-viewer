@@ -178,23 +178,19 @@
         <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
       </div>
       <div class="video-modal-toggles">
-        <label class="video-modal-toggle">
-          <input type="checkbox" id="videoModalAutoAdvance" checked />
-          Pasar automáticamente al siguiente vídeo al terminar
-        </label>
-        <label class="video-modal-toggle">
-          <input type="checkbox" id="videoModalShowInfo" checked />
-          Mostrar información del lanzamiento
-        </label>
-        <label class="video-modal-toggle">
-          <input type="checkbox" id="videoModalShowGoalZone" checked />
-          Mostrar zona de portería sobre el vídeo
-        </label>
+        <button type="button" class="video-modal-icontoggle" id="videoModalAutoAdvance"
+          aria-pressed="true" title="Pasar automáticamente al siguiente vídeo al terminar">🔁</button>
+        <button type="button" class="video-modal-icontoggle" id="videoModalShowInfo"
+          aria-pressed="true" title="Mostrar información del lanzamiento">ℹ️</button>
+        <button type="button" class="video-modal-icontoggle" id="videoModalShowGoalZone"
+          aria-pressed="true" title="Mostrar zona de portería sobre el vídeo">🥅</button>
       </div>
-      <div class="video-modal-frame">
-        <div id="videoModalPlayer"></div>
-        <div class="video-modal-info-overlay" id="videoModalInfo"></div>
-        <div class="video-modal-goalzone-overlay" id="videoModalGoalZoneOverlay" hidden></div>
+      <div class="video-modal-body">
+        <div class="video-modal-frame">
+          <div id="videoModalPlayer"></div>
+          <div class="video-modal-goalzone-overlay" id="videoModalGoalZoneOverlay" hidden></div>
+        </div>
+        <div class="video-modal-info" id="videoModalInfo"></div>
       </div>
     </div>
   </div>
@@ -391,40 +387,42 @@
     return '';
   }
 
-  // Información del lanzamiento y zona de portería: las dos se superponen
-  // sobre el propio vídeo (abajo del todo y en la esquina inferior derecha,
-  // respectivamente) y cada una se puede mostrar/ocultar por separado, con
-  // la preferencia recordada entre visitas. Cuando las dos están visibles a
-  // la vez, la miniatura de portería sube por encima de la barra de
-  // información en vez de quedar tapada por ella — de ahí que
-  // updateGoalZoneOverlay recalcule su posición cada vez que cambia la
-  // visibilidad o el contenido de cualquiera de las dos.
+  // Botones-icono de estado on/off (antes checkboxes) — sin comportamiento
+  // nativo de toggle, así que hay que gestionarlo a mano vía aria-pressed.
+  function toggleIsOn(btn) { return btn.getAttribute('aria-pressed') === 'true'; }
+  function setToggle(btn, on) { btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+
+  // Información del lanzamiento y zona de portería, cada una se puede
+  // mostrar/ocultar por separado, con la preferencia recordada entre
+  // visitas. La info ya no va superpuesta al vídeo (ver .video-modal-info),
+  // así que la zona de portería no necesita recolocarse según su alto.
   try {
-    videoModalShowInfo.checked = localStorage.getItem('vv_showInfoOverlay') !== '0';
+    setToggle(videoModalShowInfo, localStorage.getItem('vv_showInfoOverlay') !== '0');
   } catch {}
   try {
-    videoModalShowGoalZone.checked = localStorage.getItem('vv_showGoalZoneOverlay') !== '0';
+    setToggle(videoModalShowGoalZone, localStorage.getItem('vv_showGoalZoneOverlay') !== '0');
   } catch {}
   let currentGoalCode = null;
   function updateGoalZoneOverlay() {
-    const show = videoModalShowGoalZone.checked && currentGoalCode;
+    const show = toggleIsOn(videoModalShowGoalZone) && currentGoalCode;
     videoModalGoalZoneOverlay.hidden = !show;
     if (!show) return;
     videoModalGoalZoneOverlay.innerHTML = buildGoalZoneOverlaySVG(currentGoalCode);
-    videoModalGoalZoneOverlay.style.bottom = videoModalInfo.hidden
-      ? '10px'
-      : `${Math.round(videoModalInfo.getBoundingClientRect().height) + 10}px`;
   }
   function updateInfoOverlay() {
-    videoModalInfo.hidden = !videoModalShowInfo.checked;
-    updateGoalZoneOverlay(); // su posición depende de si la info está visible
+    videoModalInfo.hidden = !toggleIsOn(videoModalShowInfo);
   }
-  videoModalShowInfo.addEventListener('change', () => {
-    try { localStorage.setItem('vv_showInfoOverlay', videoModalShowInfo.checked ? '1' : '0'); } catch {}
+  videoModalAutoAdvance.addEventListener('click', () => {
+    setToggle(videoModalAutoAdvance, !toggleIsOn(videoModalAutoAdvance));
+  });
+  videoModalShowInfo.addEventListener('click', () => {
+    setToggle(videoModalShowInfo, !toggleIsOn(videoModalShowInfo));
+    try { localStorage.setItem('vv_showInfoOverlay', toggleIsOn(videoModalShowInfo) ? '1' : '0'); } catch {}
     updateInfoOverlay();
   });
-  videoModalShowGoalZone.addEventListener('change', () => {
-    try { localStorage.setItem('vv_showGoalZoneOverlay', videoModalShowGoalZone.checked ? '1' : '0'); } catch {}
+  videoModalShowGoalZone.addEventListener('click', () => {
+    setToggle(videoModalShowGoalZone, !toggleIsOn(videoModalShowGoalZone));
+    try { localStorage.setItem('vv_showGoalZoneOverlay', toggleIsOn(videoModalShowGoalZone) ? '1' : '0'); } catch {}
     updateGoalZoneOverlay();
   });
 
@@ -517,9 +515,9 @@
     fallbackMode = true;
     const reason = 'No disponible: no se pudo cargar la API de YouTube (¿bloqueador de anuncios?)';
     videoModalReplay.title = reason;
-    videoModalAutoAdvance.checked = false;
+    setToggle(videoModalAutoAdvance, false);
     videoModalAutoAdvance.disabled = true;
-    videoModalAutoAdvance.parentElement.title = reason;
+    videoModalAutoAdvance.title = reason;
   }
 
   // 3000ms era demasiado poco: en condiciones reales (compitiendo con el
@@ -562,7 +560,7 @@
   let advanceFired = false;
 
   function tryAutoAdvance() {
-    if (advanceFired || videoModalOverlay.hidden || !videoModalAutoAdvance.checked) return;
+    if (advanceFired || videoModalOverlay.hidden || !toggleIsOn(videoModalAutoAdvance)) return;
     advanceFired = true;
     goToVideo(1);
   }
@@ -638,12 +636,12 @@
       if (!Number.isFinite(currentTime)) return;
       if (currentTime >= currentVideoParams.endSec - 0.5) {
         tryAutoAdvance();
-      } else if (videoModalAutoAdvance.checked) {
+      } else if (toggleIsOn(videoModalAutoAdvance)) {
         // Pausa manual de verdad (no ha llegado al final del corte todavía):
         // el usuario se ha parado a mirar la jugada con calma, no quiere
         // que salte solo al siguiente corte en cuanto reanude sin avisar.
-        // Se desactiva la casilla en vez de dejarla marcada en silencio.
-        videoModalAutoAdvance.checked = false;
+        // Se desactiva el botón en vez de dejarlo marcado en silencio.
+        setToggle(videoModalAutoAdvance, false);
       }
     }
   }
@@ -748,12 +746,9 @@
 
     currentGoalCode = GOAL_LABEL_TO_CODE[record[COL_GOAL]] || null;
 
-    // El modal tiene que estar ya visible (no display:none) antes de medir
-    // la altura de la info en updateInfoOverlay — con el modal oculto,
-    // getBoundingClientRect() de cualquier cosa dentro da 0 y la zona de
-    // portería no sube por encima del texto como debería.
     videoModalOverlay.hidden = false;
-    updateInfoOverlay(); // pinta/oculta la info y recoloca la zona de portería si hace falta
+    updateInfoOverlay();
+    updateGoalZoneOverlay();
   }
 
   const params = new URLSearchParams(location.search)
