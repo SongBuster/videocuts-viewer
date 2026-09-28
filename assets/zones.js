@@ -53,7 +53,7 @@ function fillFor(intensity, accent, selected) {
 // Pinta el mapa de zonas de lanzamiento (13 zonas) dentro de `el`, coloreado
 // según `counts` ({code: n}); `selected` es el array de códigos activos en el
 // filtro y `onToggle(code)` se llama al hacer clic en una zona.
-export function renderShotZoneMap(el, { counts, selected, onToggle, accent = '#3b82f6' }) {
+export function renderShotZoneMap(el, { counts, selected, onToggle, accent = '#9085e9' }) {
   const max = Math.max(1, ...Object.values(counts))
   const polys = SHOT_ZONES.map((z) => {
     const n = counts[z.code] || 0
@@ -87,7 +87,7 @@ export function renderShotZoneMap(el, { counts, selected, onToggle, accent = '#3
 
 // Pinta la rejilla de portería (3x3 + 3 franjas de fuera), misma geometría
 // que GoalZonePicker.tsx en la app.
-export function renderGoalZoneMap(el, { counts, selected, onToggle, accent = '#3b82f6' }) {
+export function renderGoalZoneMap(el, { counts, selected, onToggle, accent = '#9085e9' }) {
   const { cols, cellW, cellH, post, outSide, outTop } = GOAL_LAYOUT
   const gridW = cols * cellW
   const gridH = 3 * cellH

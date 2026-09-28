@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Rival — VideoCuts</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" />
-<link rel="stylesheet" href="assets/app.css" />
+<link rel="stylesheet" href="../assets/app.css" />
 <style>
   .tabs { display: flex; gap: 6px; padding: 0 20px; border-bottom: 1px solid #2a2a2a; }
   .tab-btn {
@@ -30,9 +30,10 @@
   .dash-filters-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .dash-filters-title { color: #aaa; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
   .filters-reset {
-    background: none; border: none; color: var(--accent-text); font-size: 11px; cursor: pointer; padding: 2px 0;
+    background: none; border: 1px solid var(--border); color: var(--text-secondary); font-size: 11px;
+    cursor: pointer; padding: 5px 12px; border-radius: 999px; font-family: inherit;
   }
-  .filters-reset:hover { color: var(--accent-text); text-decoration: underline; }
+  .filters-reset:hover { border-color: var(--accent); color: #fff; }
   .filters-col { display: flex; flex-direction: column; gap: 10px; }
   .filters-col .dd-filter { display: block; }
   .filters-col .dd-filter-btn { width: 100%; box-sizing: border-box; justify-content: space-between; }
@@ -62,11 +63,88 @@
       position: static;
     }
   }
+
+  /* ── Pestaña Jugadores: filtros arriba (a todo el ancho, colapsables como
+     cualquier otro panel) en vez de barra lateral fija, y dos columnas
+     debajo — deja hueco a la derecha para los Clips (siguiente etapa); de
+     momento ahí vive la tabla de detalle. La pestaña Portero sigue con el
+     esquema .dash-layout/.dash-filters de siempre, sin tocar. ── */
+  .jug-wrap { display: flex; flex-direction: column; gap: 18px; padding: 18px 20px 30px; }
+  .filters-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .jug-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.05fr); gap: 18px; align-items: start; }
+  .jug-col-a, .jug-col-b { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  @media (max-width: 900px) {
+    .jug-layout { grid-template-columns: minmax(0,1fr); }
+  }
+
+  /* ── Filtros "inmediatos" (Jornada/Resultado/Modalidad): chips visibles
+     de un vistazo, sin abrir nada — reutiliza .chip-group/.chip de
+     app.css. Los de más variedad (Fase, Mano, Tipo...) se quedan como
+     desplegables, agrupados debajo tras el divisor. ── */
+  .filters-tier { display: flex; gap: 22px; flex-wrap: wrap; margin-bottom: 10px; }
+  .chip-group { gap: 5px; }
+  .chip-group .group-label { margin-top: 0; }
+  .chip-group > div { display: contents; }
+  .chip-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: middle; }
+  .filters-divider { height: 1px; background: #2a2a2a; margin: 0 0 10px; }
+  #filtersPanel.panel { padding: 13px 18px; }
+  #filtersPanel .panel-title-row { margin-bottom: 8px; }
+  #filtersPanel .dash-filters-title { margin-bottom: 6px !important; }
+
+  /* ── Resumen: tarjetas grandes en vez de cifras en línea ── */
+  .stat-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat-tile { background: var(--surface-alt); border-radius: 10px; padding: 13px; min-width: 0; }
+  .stat-tile .stat-value {
+    font-family: var(--font-display); font-size: 26px; font-weight: 600; color: var(--accent);
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .stat-tile .stat-label { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 5px; }
+
+  /* ── Comparativa de jugadores: barras dobles (lanzamientos/goles)
+     apiladas por jugador en vez de un gráfico de barras agrupadas — se
+     lee mejor en una columna estrecha y sigue actuando como filtro
+     clicable (togglePlayerFilter, sin cambios). ── */
+  .scorer-row { padding: 9px 10px; border-radius: 10px; cursor: pointer; border: 1px solid transparent; margin-bottom: 6px; transition: background .12s, border-color .12s; }
+  .scorer-row:last-child { margin-bottom: 0; }
+  .scorer-row:hover { background: rgba(255,255,255,0.04); }
+  .scorer-row.active { background: var(--accent-soft); border-color: var(--accent); }
+  .scorer-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; margin-bottom: 6px; }
+  .scorer-name { color: #fff; font-weight: 600; }
+  .scorer-eff { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+  .scorer-row.active .scorer-eff { color: var(--text-secondary); }
+  .scorer-bars { display: flex; flex-direction: column; }
+  .scorer-bar-track { background: rgba(255,255,255,0.06); height: 6px; overflow: hidden; }
+  .scorer-bar-track:first-child { border-radius: 4px 4px 0 0; }
+  .scorer-bar-track:last-child { border-radius: 0 0 4px 4px; margin-top: 1px; }
+  .scorer-bar-fill { height: 100%; }
+  .scorer-bar-fill.lanz { background: var(--accent); }
+  .scorer-bar-fill.gol { background: #d95926; }
+  .scorer-figures { display: flex; gap: 12px; margin-top: 6px; font-size: 10.5px; color: var(--text-muted); font-family: var(--font-mono); }
+
+  /* ── Clips: rejilla de miniaturas reales de YouTube (Etapa 3) — sustituye
+     a la tabla de detalle como forma principal de abrir un vídeo; la tabla
+     pasa a una sección "ver tabla completa" colapsada, a todo lo ancho,
+     debajo de las dos columnas (mismo patrón que el prototipo). ── */
+  .clips-count { font-size: 11px; color: var(--text-muted); }
+  .filmstrip { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap: 12px; }
+  .clip-card { min-width: 0; cursor: pointer; background: none; border: none; padding: 0; text-align: left; font-family: inherit; color: inherit; }
+  .clip-thumb { position: relative; aspect-ratio: 16/9; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--surface-alt); }
+  .clip-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .clip-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; color: #fff; text-shadow: 0 1px 5px rgba(0,0,0,.7); opacity: .9; transition: transform .12s; }
+  .clip-card:hover .clip-play { transform: scale(1.12); }
+  .clip-time { position: absolute; bottom: 6px; right: 6px; font-family: var(--font-mono); font-size: 10px; background: rgba(0,0,0,.65); padding: 1px 5px; border-radius: 4px; color: #fff; }
+  .clip-meta { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
+  .clip-player { font-size: 11px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .clip-sub { font-size: 10.5px; color: var(--text-muted); margin-top: 3px; }
+  .clips-more { grid-column: 1 / -1; font-size: 11px; color: var(--text-muted); text-align: center; padding-top: 4px; }
+
+  .table-toggle { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 2px 0; font-family: inherit; font-weight: 600; }
+  .table-wrap { margin-top: 12px; }
 </style>
 </head>
 <body>
   <header class="site-header">
-    <a class="back" href="index.html">← Rivales</a>
+    <a class="back" href="index.html">← Mis equipos</a>
     <h1 id="teamName">Cargando…</h1>
   </header>
 
@@ -97,16 +175,19 @@
           Pasar automáticamente al siguiente vídeo al terminar
         </label>
         <label class="video-modal-toggle">
+          <input type="checkbox" id="videoModalShowInfo" checked />
+          Mostrar información del lanzamiento
+        </label>
+        <label class="video-modal-toggle">
           <input type="checkbox" id="videoModalShowGoalZone" checked />
           Mostrar zona de portería sobre el vídeo
         </label>
       </div>
       <div class="video-modal-frame">
         <div id="videoModalPlayer"></div>
+        <div class="video-modal-info-overlay" id="videoModalInfo"></div>
         <div class="video-modal-goalzone-overlay" id="videoModalGoalZoneOverlay" hidden></div>
       </div>
-      <div class="video-modal-info" id="videoModalInfo"></div>
-      <div class="video-modal-resize" id="videoModalResize" title="Arrastra para cambiar el tamaño"></div>
     </div>
   </div>
 
@@ -116,9 +197,10 @@
   <script src="https://www.youtube.com/iframe_api"></script>
 
 <script type="module">
-  import { fetchJSON, escapeHtml } from './assets/app.js'
-  import { createDropdownFilter, createTreeDropdownFilter, buildTimeTree, computeTimeBucketKey } from './assets/dropdown-filter.js'
-  import { SHOT_ZONES, COURT_W, COURT_H, GOAL_INNER_ZONES, GOAL_LABELS, GOAL_LAYOUT } from './assets/zones.js'
+  import { escapeHtml } from '../assets/app.js'
+  import { createDropdownFilter, createTreeDropdownFilter, buildTimeTree, computeTimeBucketKey } from '../assets/dropdown-filter.js'
+  import { SHOT_ZONES, COURT_W, COURT_H, GOAL_INNER_ZONES, GOAL_LABELS, GOAL_LAYOUT } from '../assets/zones.js'
+  import { requireSession, fetchTeamRecords, getChannelName } from '../assets/supabase.js'
 
   const COL_PLAYER = 'Jugador'
   const COL_CODE = 'Codigo'
@@ -138,11 +220,6 @@
   const POSITION_LABELS = {
     EI: 'Extremo izquierdo', LI: 'Lateral izquierdo', PI: 'Pivote', PT: 'Portero',
     CT: 'Central', LD: 'Lateral derecho', ED: 'Extremo derecho'
-  }
-  // Para el eje X del gráfico de puesto: si no cabe el nombre completo, se
-  // prueba una abreviatura antes de caer al código de dos letras.
-  const POSITION_LABELS_SHORT = {
-    EI: 'Ext Izq', LI: 'Lat Izq', PI: 'Pivote', PT: 'Portero', CT: 'Central', LD: 'Lat Der', ED: 'Ext Der'
   }
   // El CSV trae el nombre completo ("Extremo izquierdo"), no el código — el
   // desplegable de la plantilla exporta la etiqueta, igual que "Mano". Un
@@ -282,21 +359,41 @@
   const videoModalNext = document.getElementById('videoModalNext');
   const videoModalReplay = document.getElementById('videoModalReplay');
   const videoModalAutoAdvance = document.getElementById('videoModalAutoAdvance');
+  const videoModalShowInfo = document.getElementById('videoModalShowInfo');
   const videoModalShowGoalZone = document.getElementById('videoModalShowGoalZone');
+  const videoModalInfo = document.getElementById('videoModalInfo');
   const videoModalGoalZoneOverlay = document.getElementById('videoModalGoalZoneOverlay');
-  const videoModal = document.querySelector('.video-modal');
-  const videoModalResize = document.getElementById('videoModalResize');
   document.getElementById('videoModalClose').addEventListener('click', closeVideoModal);
   videoModalOverlay.addEventListener('click', (e) => { if (e.target === videoModalOverlay) closeVideoModal(); });
   videoModalPrev.addEventListener('click', () => goToVideo(-1));
   videoModalNext.addEventListener('click', () => goToVideo(1));
   videoModalReplay.addEventListener('click', replayVideo);
 
-  // Zona de portería superpuesta sobre el vídeo: mini rejilla igual que la
-  // del mapa de estadísticas, pero solo con la celda de este lanzamiento
-  // resaltada — sin datos ni etiquetas, es solo una referencia visual
-  // rápida de dónde fue el disparo. Opcional (se puede ocultar si tapa
-  // demasiado) y se recuerda la preferencia entre visitas.
+  // Resultado → clase de la pill de color: perspectiva jugador (gol/parada/
+  // fuera, tres colores, igual que en los Clips) o perspectiva portero
+  // (good/bad — una parada es su éxito, un gol en contra su fallo). La
+  // misma función sirve para las tarjetas de Clips (siempre jugador) y para
+  // la información superpuesta del reproductor (compartida por las dos
+  // pestañas, ver openVideoModal).
+  function resultPillClass(resultado, isPortero) {
+    if (isPortero) return /parada/i.test(resultado) ? 'good' : /gol/i.test(resultado) ? 'bad' : '';
+    if (/gol/i.test(resultado)) return 'gol';
+    if (/parada/i.test(resultado)) return 'parada';
+    if (/fuera/i.test(resultado)) return 'fuera';
+    return '';
+  }
+
+  // Información del lanzamiento y zona de portería: las dos se superponen
+  // sobre el propio vídeo (abajo del todo y en la esquina inferior derecha,
+  // respectivamente) y cada una se puede mostrar/ocultar por separado, con
+  // la preferencia recordada entre visitas. Cuando las dos están visibles a
+  // la vez, la miniatura de portería sube por encima de la barra de
+  // información en vez de quedar tapada por ella — de ahí que
+  // updateGoalZoneOverlay recalcule su posición cada vez que cambia la
+  // visibilidad o el contenido de cualquiera de las dos.
+  try {
+    videoModalShowInfo.checked = localStorage.getItem('vv_showInfoOverlay') !== '0';
+  } catch {}
   try {
     videoModalShowGoalZone.checked = localStorage.getItem('vv_showGoalZoneOverlay') !== '0';
   } catch {}
@@ -304,8 +401,20 @@
   function updateGoalZoneOverlay() {
     const show = videoModalShowGoalZone.checked && currentGoalCode;
     videoModalGoalZoneOverlay.hidden = !show;
-    if (show) videoModalGoalZoneOverlay.innerHTML = buildGoalZoneOverlaySVG(currentGoalCode);
+    if (!show) return;
+    videoModalGoalZoneOverlay.innerHTML = buildGoalZoneOverlaySVG(currentGoalCode);
+    videoModalGoalZoneOverlay.style.bottom = videoModalInfo.hidden
+      ? '10px'
+      : `${Math.round(videoModalInfo.getBoundingClientRect().height) + 10}px`;
   }
+  function updateInfoOverlay() {
+    videoModalInfo.hidden = !videoModalShowInfo.checked;
+    updateGoalZoneOverlay(); // su posición depende de si la info está visible
+  }
+  videoModalShowInfo.addEventListener('change', () => {
+    try { localStorage.setItem('vv_showInfoOverlay', videoModalShowInfo.checked ? '1' : '0'); } catch {}
+    updateInfoOverlay();
+  });
   videoModalShowGoalZone.addEventListener('change', () => {
     try { localStorage.setItem('vv_showGoalZoneOverlay', videoModalShowGoalZone.checked ? '1' : '0'); } catch {}
     updateGoalZoneOverlay();
@@ -344,35 +453,6 @@
     </svg>`;
   }
 
-  // Tamaño del modal de vídeo: se puede arrastrar desde el borde
-  // derecho (el alto lo pone solo el aspect-ratio del vídeo) y se
-  // recuerda entre visitas.
-  try {
-    const savedWidth = localStorage.getItem('vv_videoModalWidth');
-    if (savedWidth) { videoModal.style.maxWidth = 'none'; videoModal.style.width = `${savedWidth}px`; }
-  } catch {}
-
-  videoModalResize.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    videoModalResize.setPointerCapture(e.pointerId);
-    const startX = e.clientX;
-    const startWidth = videoModal.getBoundingClientRect().width;
-    videoModal.style.maxWidth = 'none';
-
-    function onMove(ev) {
-      const maxW = Math.min(window.innerWidth * 0.96, 1400);
-      const newWidth = Math.min(maxW, Math.max(320, startWidth + (ev.clientX - startX)));
-      videoModal.style.width = `${newWidth}px`;
-    }
-    function onUp() {
-      document.removeEventListener('pointermove', onMove);
-      document.removeEventListener('pointerup', onUp);
-      try { localStorage.setItem('vv_videoModalWidth', String(Math.round(videoModal.getBoundingClientRect().width))); } catch {}
-    }
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp);
-  });
-
   // Navegación dentro del modal: la lista de "vídeos disponibles" es la
   // de la tabla de detalle de la pestaña activa, en el orden en que se
   // está viendo ahora mismo (respeta filtros y la columna por la que
@@ -393,8 +473,13 @@
   // de privacidad — Brave Shields, uBlock, etc. — bloquean con
   // frecuencia justo este script de YouTube). Si no responde en unos
   // segundos, en vez de dejar el vídeo en negro para siempre, se cae a
-  // un <iframe> normal: se pierde "volver a ver" y el auto-avance,
-  // pero al menos se ve el vídeo.
+  // un <iframe> normal (ver renderFallbackIframe/enterFallbackMode): se
+  // pierde "volver a ver" sin recargar el iframe entero y, sobre todo,
+  // cualquier forma fiable de saber si el vídeo está pausado o no — un
+  // iframe suelto con enablejsapi en la URL no manda sus eventos de estado
+  // sin el intercambio inicial que hace el envoltorio oficial de la API,
+  // así que ahí "Pasar automáticamente al siguiente vídeo" se desactiva por
+  // completo en vez de avanzar a ciegas sin importarle si está pausado.
   let ytPlayer = null;
   let ytApiReady = false;
   let fallbackMode = false;
@@ -410,19 +495,54 @@
     }
   };
 
+  // Entrar en modo de reserva deshabilita, con su propia explicación, todo
+  // lo que dependía de saber el estado real del vídeo: "Volver a ver" (ya
+  // lo hacía) y "Pasar automáticamente al siguiente vídeo al terminar" —
+  // probado con la API bloqueada de verdad (ver commit anterior): un
+  // iframe suelto con enablejsapi en la URL NO llega a mandar sus eventos
+  // de estado sin el intercambio inicial que hace el envoltorio oficial de
+  // la API, así que aquí no hay ninguna señal fiable de si el vídeo está
+  // pausado o no — mejor no avanzar nunca a ciegas (le daría igual que
+  // estuviera pausado) que avanzar en el momento equivocado.
+  function enterFallbackMode() {
+    if (fallbackMode) return;
+    fallbackMode = true;
+    const reason = 'No disponible: no se pudo cargar la API de YouTube (¿bloqueador de anuncios?)';
+    videoModalReplay.title = reason;
+    videoModalAutoAdvance.checked = false;
+    videoModalAutoAdvance.disabled = true;
+    videoModalAutoAdvance.parentElement.title = reason;
+  }
+
+  // 3000ms era demasiado poco: en condiciones reales (compitiendo con el
+  // resto de recursos de la página nada más cargar) el script de la API
+  // podía tardar más que eso sin estar bloqueado por nada — y una vez se
+  // entra en modo de reserva, se queda así el resto de la sesión aunque el
+  // script termine cargando justo después (ver onYouTubeIframeAPIReady más
+  // arriba). Preferible esperar un poco más antes de rendirse.
   setTimeout(() => {
     if (ytApiReady) return;
-    fallbackMode = true;
-    videoModalReplay.title = 'No disponible: no se pudo cargar la API de YouTube (¿bloqueador de anuncios?)';
+    enterFallbackMode();
     if (pendingVideo) {
       renderFallbackIframe(pendingVideo);
-      scheduleFallbackAdvance(pendingVideo.startSec, pendingVideo.endSec);
       pendingVideo = null;
     }
-  }, 3000);
+  }, 8000);
 
   function renderFallbackIframe({ youtubeId, startSec, endSec }) {
-    const params = new URLSearchParams({ start: String(startSec), autoplay: '1', rel: '0', r: String(Date.now()) });
+    // controls=0 se probó y se quitó: en Brave (Shields) y bloqueadores
+    // similares el envoltorio JS de YouTube puede quedarse atascado
+    // reintentando una llamada de telemetría bloqueada, y entonces ni la API
+    // ni el postMessage directo conseguían pausar/reanudar — sin controles
+    // nativos, eso dejaba el vídeo sin ninguna forma de pausarlo. Mejor
+    // conservar el botón de pausa y la barra de progreso propios de YouTube,
+    // aunque añadan algo de chrome sobre cortes tan breves. iv_load_policy/
+    // modestbranding se mantienen: limpian tarjetas/logo sin afectar a la
+    // pausa.
+    const params = new URLSearchParams({
+      start: String(startSec), autoplay: '1', rel: '0',
+      modestbranding: '1', iv_load_policy: '3', r: String(Date.now())
+    });
     if (Number.isFinite(endSec) && endSec > startSec) params.set('end', String(endSec));
     document.getElementById('videoModalPlayer').innerHTML =
       `<iframe src="https://www.youtube.com/embed/${youtubeId}?${params.toString()}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
@@ -440,7 +560,9 @@
   }
 
   function loadIntoPlayer({ youtubeId, startSec, endSec }) {
-    const vars = { start: startSec, autoplay: 1, rel: 0 };
+    // controls:0 se probó y se quitó (ver renderFallbackIframe): rompía la
+    // pausa en Brave/bloqueadores similares sin ganancia real a cambio.
+    const vars = { start: startSec, autoplay: 1, rel: 0, modestbranding: 1, iv_load_policy: 3 };
     if (Number.isFinite(endSec) && endSec > startSec) vars.end = endSec;
     try {
       if (!ytPlayer) {
@@ -450,9 +572,8 @@
           events: {
             onStateChange: handlePlayerStateChange,
             onError: () => {
-              fallbackMode = true;
+              enterFallbackMode();
               renderFallbackIframe({ youtubeId, startSec, endSec });
-              scheduleFallbackAdvance(startSec, endSec);
             }
           }
         });
@@ -460,9 +581,8 @@
         ytPlayer.loadVideoById({ videoId: youtubeId, startSeconds: startSec, endSeconds: vars.end });
       }
     } catch {
-      fallbackMode = true;
+      enterFallbackMode();
       renderFallbackIframe({ youtubeId, startSec, endSec });
-      scheduleFallbackAdvance(startSec, endSec);
     }
   }
 
@@ -473,32 +593,86 @@
   // manual con "se acabó el corte", se mira el tiempo real reproducido
   // (getCurrentTime): solo si ya está en el fin del corte se considera
   // acabado de verdad; si el usuario lo retoma, sigue donde estaba.
-  function handlePlayerStateChange(e) {
-    if (e.data === YT.PlayerState.ENDED) { tryAutoAdvance(); return; }
-    if (e.data === YT.PlayerState.PAUSED && currentVideoParams && Number.isFinite(currentVideoParams.endSec)) {
-      const reachedEnd = ytPlayer.getCurrentTime() >= currentVideoParams.endSec - 0.5;
-      if (reachedEnd) tryAutoAdvance();
+  //
+  // Bug real encontrado al probarlo: al cargar un corte nuevo con
+  // loadVideoById (reutiliza el mismo ytPlayer), YouTube puede disparar un
+  // PAUSED transitorio mientras carga/hace buffering — y en ese momento
+  // getCurrentTime() todavía puede devolver el tiempo del corte ANTERIOR
+  // (no se ha actualizado todavía al nuevo). Si ese tiempo residual ya
+  // superaba el "fin de corte" del nuevo vídeo, se disparaba un avance
+  // automático inmediato, antes de que el corte nuevo llegara a
+  // reproducirse — exactamente cuando el vídeo tarda un poco en cargar.
+  // clipHasStarted (a false al empezar cada corte, ver openVideoModal/
+  // replayVideo) exige haber visto de verdad un PLAYING de ESTE corte antes
+  // de fiarnos de un PAUSED para decidir que se acabó.
+  let clipHasStarted = false;
+
+  // stateCode: mismos códigos numéricos que YT.PlayerState (1 jugando, 0
+  // acabado, 2 pausado...). currentTimeHint: si ya se conoce el tiempo
+  // reproducido (viene en el mensaje bruto de infoDelivery, ver más abajo),
+  // se usa directamente en vez de volver a preguntarle a ytPlayer.
+  function processPlayerState(stateCode, currentTimeHint) {
+    if (typeof YT === 'undefined') return; // por si el mensaje bruto llegara antes de que cargue el script de la API
+    if (stateCode === YT.PlayerState.PLAYING) { clipHasStarted = true; return; }
+    // Bug real encontrado al probarlo: loadVideoById reutiliza el mismo
+    // reproductor/iframe para el siguiente corte, y un evento ENDED que en
+    // realidad pertenecía al corte YA ABANDONADO puede llegar tarde, justo
+    // después de haber empezado a cargar el nuevo — antes de que este haya
+    // tenido ocasión de reproducirse. Sin la misma guarda que ya usa PAUSED
+    // (exigir un PLAYING real de ESTE corte primero), ese ENDED atrasado
+    // disparaba un avance inmediato — y si el siguiente corte recibía a su
+    // vez otro ENDED atrasado de la misma manera, la cadena de avances
+    // podía llegar a saltar hasta el último corte de la lista casi de
+    // golpe, dejando la reproducción parada ahí.
+    if (stateCode === YT.PlayerState.ENDED) { if (clipHasStarted) tryAutoAdvance(); return; }
+    if (stateCode === YT.PlayerState.PAUSED && clipHasStarted && currentVideoParams && Number.isFinite(currentVideoParams.endSec)) {
+      const currentTime = Number.isFinite(currentTimeHint) ? currentTimeHint : (ytPlayer ? ytPlayer.getCurrentTime() : NaN);
+      if (!Number.isFinite(currentTime)) return;
+      if (currentTime >= currentVideoParams.endSec - 0.5) {
+        tryAutoAdvance();
+      } else if (videoModalAutoAdvance.checked) {
+        // Pausa manual de verdad (no ha llegado al final del corte todavía):
+        // el usuario se ha parado a mirar la jugada con calma, no quiere
+        // que salte solo al siguiente corte en cuanto reanude sin avisar.
+        // Se desactiva la casilla en vez de dejarla marcada en silencio.
+        videoModalAutoAdvance.checked = false;
+      }
     }
   }
 
-  // Sin la API de YouTube (modo de reserva, iframe simple) no hay
-  // forma de saber el estado real del vídeo — ahí sí hace falta un
-  // temporizador por duración conocida, con la limitación de que no
-  // distingue una pausa manual de haber llegado al final.
-  let advanceTimer = null;
+  function handlePlayerStateChange(e) { processPlayerState(e.data); }
 
-  function scheduleFallbackAdvance(startSec, endSec) {
-    if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
-    if (!Number.isFinite(endSec) || endSec <= startSec) return;
-    const ms = (endSec - startSec) * 1000 + 400;
-    advanceTimer = setTimeout(tryAutoAdvance, ms);
-  }
+  // Vía de detección adicional, en paralelo al callback de arriba: en
+  // navegadores con bloqueadores de rastreo (Brave Shields y similares) que
+  // cortan las llamadas de telemetría de YouTube, el envoltorio oficial de
+  // la API puede quedarse atascado reintentando esa llamada bloqueada y no
+  // llegar a invocar nunca nuestro onStateChange — aunque el iframe siga
+  // mandando sus propios mensajes por postMessage con normalidad. Escuchar
+  // esos mensajes en bruto, nosotros mismos, no depende de que el
+  // envoltorio oficial no se haya colgado. Esto SOLO aplica al reproductor
+  // de la API (enablejsapi ya viene activado ahí) — el iframe de reserva de
+  // más abajo no lo lleva y, comprobado, no manda estos mensajes sin el
+  // intercambio inicial que hace el envoltorio oficial (ver
+  // enterFallbackMode). Si además funciona la vía oficial (caso normal, sin
+  // nada bloqueado), esto simplemente repite el mismo resultado sin
+  // problema: tryAutoAdvance ya se protege con advanceFired.
+  window.addEventListener('message', (event) => {
+    if (event.origin !== 'https://www.youtube.com') return;
+    let data;
+    try { data = JSON.parse(event.data); } catch { return; }
+    if (!data || !data.event) return;
+    if (data.event === 'infoDelivery' && data.info && typeof data.info.playerState === 'number') {
+      processPlayerState(data.info.playerState, data.info.currentTime);
+    } else if (data.event === 'onStateChange' && typeof data.info === 'number') {
+      processPlayerState(data.info);
+    }
+  });
 
   function replayVideo() {
     advanceFired = false;
+    clipHasStarted = false; // igual que al cargar un corte nuevo: no fiarse de un PAUSED hasta ver un PLAYING real tras el seek
     if (fallbackMode) {
       renderFallbackIframe(currentVideoParams);
-      if (currentVideoParams) scheduleFallbackAdvance(currentVideoParams.startSec, currentVideoParams.endSec);
     } else if (ytPlayer) {
       ytPlayer.seekTo(currentClipStart, true);
       ytPlayer.playVideo();
@@ -513,14 +687,13 @@
 
   function closeVideoModal() {
     videoModalOverlay.hidden = true;
-    if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
     if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo(); // corta la reproducción al cerrar
     else if (fallbackMode) document.getElementById('videoModalPlayer').innerHTML = ''; // sin API no hay pauseVideo: se quita el iframe
   }
 
   // El resultado ("Gol"/"Parada"/"Fuera") se colorea distinto según la
   // pestaña: para jugadores un gol es un éxito (verde) y una parada un
-  // fallo (gris apagado); para portero es justo al revés (una parada es
+  // fallo (azul, neutro); para portero es justo al revés (una parada es
   // el éxito del portero). Se distingue mirando el Puesto del registro:
   // solo los cortes de portero llevan literalmente "Portero" ahí.
   function openVideoModal(record, index) {
@@ -534,8 +707,9 @@
     currentClipStart = startSec;
     currentVideoParams = { youtubeId, startSec, endSec };
     advanceFired = false;
+    clipHasStarted = false;
 
-    if (fallbackMode) { renderFallbackIframe(currentVideoParams); scheduleFallbackAdvance(startSec, endSec); }
+    if (fallbackMode) renderFallbackIframe(currentVideoParams);
     else if (ytApiReady) loadIntoPlayer(currentVideoParams);
     else pendingVideo = currentVideoParams;
 
@@ -550,9 +724,7 @@
     // VideoCuts) — "Posición portero" sí es propia de cualquier exportación
     // de portero, así que es la señal fiable de que este registro es suyo.
     const isPortero = record[COL_PUESTO] === 'Portero' || Boolean(record[COL_GK_POSITION]);
-    const resultClass = isPortero
-      ? (/parada/i.test(resultado) ? 'is-good' : /gol/i.test(resultado) ? 'is-bad' : '')
-      : (/gol/i.test(resultado) ? 'is-gol' : /parada/i.test(resultado) ? 'is-parada' : '');
+    const pillClass = resultPillClass(resultado, isPortero);
     const playerLabel = record[COL_PLAYER] ? parsePlayer(record[COL_PLAYER]).label : '';
 
     const line1 = [record[COL_CODE], record['Parte'], record['Tiempo de partido'], record[COL_PUESTO]]
@@ -560,19 +732,24 @@
 
     const manoTipo = [record['Mano'], record['Tipo de lanzamiento']].filter(Boolean).join(', ');
     const line2 = [playerLabel, manoTipo].filter(Boolean).map(escapeHtml).join(' — ') +
-      (resultado ? ` — <span class="${resultClass}">${escapeHtml(resultado)}</span>` : '');
+      (resultado ? ` <span class="result-pill ${pillClass}">${escapeHtml(resultado)}</span>` : '');
 
-    document.getElementById('videoModalInfo').innerHTML = `
+    videoModalInfo.innerHTML = `
       <div class="video-modal-info-line video-modal-info-context">${line1}</div>
       <div class="video-modal-info-line">${line2}</div>`;
 
     currentGoalCode = GOAL_LABEL_TO_CODE[record[COL_GOAL]] || null;
-    updateGoalZoneOverlay();
 
+    // El modal tiene que estar ya visible (no display:none) antes de medir
+    // la altura de la info en updateInfoOverlay — con el modal oculto,
+    // getBoundingClientRect() de cualquier cosa dentro da 0 y la zona de
+    // portería no sube por encima del texto como debería.
     videoModalOverlay.hidden = false;
+    updateInfoOverlay(); // pinta/oculta la info y recoloca la zona de portería si hace falta
   }
 
   const params = new URLSearchParams(location.search)
+  const channelId = params.get('id')
   const team = params.get('equipo')
   const teamNameEl = document.getElementById('teamName')
   const panels = {
@@ -588,22 +765,20 @@
     });
   });
 
-  if (!team) {
-    teamNameEl.textContent = 'Falta el rival';
-    panels.jugadores.innerHTML = '<div class="empty-state">Esta página necesita un ?equipo=... en la URL. Entra desde la portada.</div>';
-  } else {
+  if (!channelId || !team) {
+    teamNameEl.textContent = 'Falta el equipo';
+    panels.jugadores.innerHTML = '<div class="empty-state">Esta página necesita ?id=...&equipo=... en la URL. Entra desde "Mis equipos".</div>';
+  } else if (await requireSession()) {
     teamNameEl.textContent = team;
     document.title = `${team} — VideoCuts`;
     try {
-      const index = await fetchJSON('data/lanzamientos/index.json');
-      const entries = index.filter((e) => e.team === team);
+      const channelName = await getChannelName(channelId);
+      if (channelName) teamNameEl.textContent = `${team} · ${channelName}`;
 
-      const jugadoresEntries = entries.filter((e) => e.mode === 'jugadores');
-      if (jugadoresEntries.length === 0) {
-        panels.jugadores.innerHTML = '<div class="empty-state">Sin datos de jugadores para este rival todavía.</div>';
+      const records = await fetchTeamRecords(channelId, team, 'jugadores');
+      if (records.length === 0) {
+        panels.jugadores.innerHTML = '<div class="empty-state">Sin datos de jugadores para este equipo todavía.</div>';
       } else {
-        const datasets = await Promise.all(jugadoresEntries.map((e) => fetchJSON(`data/lanzamientos/${e.id}.json`)));
-        const records = datasets.flatMap((d) => d.records);
 
         // Puesto solo existe en CSVs exportados con la versión de VideoCuts
         // que lo incluye — si el rival no lo tiene relleno, ni el gráfico ni
@@ -612,60 +787,126 @@
         const hasPuesto = records.some((r) => r[COL_PUESTO]);
 
         panels.jugadores.innerHTML = `
-          <button type="button" class="filters-toggle" id="filtersToggle">☰ Filtros</button>
-          <div class="dash-layout">
-            <aside class="dash-filters" id="dashFilters">
-              <div class="dash-filters-title-row">
-                <div class="dash-filters-title">Filtros</div>
-                <button type="button" class="filters-reset" id="filtersReset">Limpiar todo</button>
-              </div>
-              <div class="filters-col" id="filtersCol"></div>
-            </aside>
-            <main class="dash-main">
-              <div class="panel stat-headline" id="statHeadline"></div>
-              <div class="panel" id="playerComparisonPanel" hidden>
-                <div class="panel-title">Comparativa de jugadores</div>
-                <div class="chart-legend">
-                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#9085e9"></span>Lanzamientos</span>
-                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
+          <div class="jug-wrap">
+            ${hasPuesto ? `
+            <section aria-label="Selección de puesto">
+              <div class="dash-filters-title" style="margin-bottom:8px;">Puesto del lanzador</div>
+              <div class="position-select" id="positionSelect"></div>
+            </section>` : ''}
+
+            <div class="panel" id="filtersPanel" data-collapsible>
+              <div class="panel-title-row">
+                <div class="panel-title">Filtros</div>
+                <div style="display:flex; align-items:center; gap:14px;">
+                  <button type="button" class="filters-reset" id="filtersReset">Limpiar todo</button>
+                  <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
                 </div>
-                <div id="playerComparisonChart"></div>
               </div>
-              ${hasPuesto ? `
-              <div class="panel" id="positionEfficacyPanel" hidden>
-                <div class="panel-title">Efectividad por puesto</div>
-                <div class="chart-legend">
-                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#9085e9"></span>Lanzamientos</span>
-                  <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
+              <div class="panel-body">
+                <div class="filters-tier">
+                  <div class="chip-group">
+                    <span class="group-label">Jornada</span>
+                    <div id="jornadaChips"></div>
+                  </div>
+                  <div class="chip-group">
+                    <span class="group-label">Resultado</span>
+                    <div id="resultadoChips"></div>
+                  </div>
+                  <div class="chip-group" id="modalidadGroup" hidden>
+                    <span class="group-label">Modalidad</span>
+                    <div id="modalidadChips"></div>
+                  </div>
                 </div>
-                <div id="positionEfficacyChart"></div>
-              </div>` : ''}
-              <div class="zones-row">
-                <div class="panel">
+                <div class="filters-divider"></div>
+                <div class="dash-filters-title" style="margin-bottom:8px;">Detalle del lanzamiento</div>
+                <div class="filters-row" id="filtersCol"></div>
+              </div>
+            </div>
+
+            <div class="jug-layout">
+              <div class="jug-col-a">
+                <div class="panel" data-collapsible>
+                  <div class="panel-title-row">
+                    <div class="panel-title" id="statHeadlineTitle">Resumen</div>
+                    <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                  </div>
+                  <div class="panel-body">
+                    <div class="stat-tiles" id="statHeadline"></div>
+                  </div>
+                </div>
+                <div class="panel" id="playerComparisonPanel" data-collapsible hidden>
+                  <div class="panel-title-row">
+                    <div class="panel-title">Comparativa de jugadores</div>
+                    <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                  </div>
+                  <div class="panel-body">
+                    <div class="chart-legend">
+                      <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:var(--accent)"></span>Lanzamientos</span>
+                      <span class="chart-legend-item"><span class="chart-legend-swatch" style="background:#d95926"></span>Goles</span>
+                    </div>
+                    <div id="playerComparisonChart"></div>
+                  </div>
+                </div>
+                <div class="panel" id="zoneLanzamientoPanel" data-collapsible>
                   <div class="panel-title-row">
                     <div class="panel-title">Zona de lanzamiento</div>
-                    <button type="button" class="zone-clear-btn" id="zonePositionClear" disabled>Borrar selección</button>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <button type="button" class="zone-clear-btn" id="zonePositionClear" disabled>Borrar selección</button>
+                      <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                    </div>
                   </div>
-                  <div id="zonePositionChart"></div>
+                  <div class="panel-body">
+                    <div id="zonePositionChart"></div>
+                  </div>
                 </div>
-                <div class="panel">
+                <div class="panel" data-collapsible>
                   <div class="panel-title-row">
                     <div class="panel-title">Zona de portería</div>
-                    <button type="button" class="zone-clear-btn" id="goalZoneClear" disabled>Borrar selección</button>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <button type="button" class="zone-clear-btn" id="goalZoneClear" disabled>Borrar selección</button>
+                      <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                    </div>
                   </div>
-                  <div id="goalZoneChart"></div>
+                  <div class="panel-body">
+                    <div id="goalZoneChart"></div>
+                  </div>
                 </div>
               </div>
-              <div class="panel" id="detailTablePanel" hidden>
-                <div class="panel-title">Detalle de lanzamientos</div>
+              <aside class="jug-col-b">
+                <div class="panel" id="clipsPanel" data-collapsible hidden>
+                  <div class="panel-title-row">
+                    <div class="panel-title" id="clipsTitle">Clips</div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <span class="clips-count" id="clipsCount"></span>
+                      <button type="button" class="panel-collapse-btn" aria-label="Colapsar sección">▾</button>
+                    </div>
+                  </div>
+                  <div class="panel-body">
+                    <div class="filmstrip" id="filmstrip"></div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+
+            <div class="panel" id="detailTablePanel" hidden>
+              <button type="button" class="table-toggle" id="tableToggle">Ver tabla completa ▾</button>
+              <div class="table-wrap" id="tableWrap" hidden>
                 <div class="detail-table-wrap">
                   <table class="detail-table" id="detailTable"></table>
                 </div>
               </div>
-            </main>
+            </div>
           </div>`;
 
-        setupFiltersToggle(document.getElementById('filtersToggle'), document.getElementById('dashFilters'));
+        // Secciones colapsables (sobre todo útil en móvil, para no obligar a
+        // hacer tanto scroll por una sección que no interesa ahora mismo) —
+        // el panel de Filtros es una más, ya no necesita su propio mecanismo
+        // de mostrar/ocultar aparte (setupFiltersToggle, que sigue usando la
+        // pestaña Portero con su barra lateral).
+        document.querySelectorAll('#tab-jugadores .panel[data-collapsible]').forEach((panel) => {
+          const btn = panel.querySelector('.panel-collapse-btn');
+          btn.addEventListener('click', () => panel.toggleAttribute('data-collapsed'));
+        });
 
         const filtersCol = document.getElementById('filtersCol');
         // Cada filtro registra cómo sacar "su" valor de un registro
@@ -678,19 +919,53 @@
         // aquí) — para poder sincronizarlos al pulsar "Limpiar todo".
         const filterComponents = {} // key -> { setSelected }
 
-        function addFilter(key, fieldLabel, column) {
-          const values = [...new Set(records.map((r) => r[column]).filter(Boolean))].sort();
-          const filter = createDropdownFilter({
-            fieldLabel,
-            options: values.map((v) => ({ value: v, label: v })),
-            onChange: (selected) => { activeFilters[key].selected = selected; renderStats(); }
-          });
-          activeFilters[key] = { getValue: (r) => r[column], selected: [] };
-          filterComponents[key] = filter;
-          filtersCol.appendChild(filter.el);
+        // Filtros "inmediatos" en forma de chips (Jornada/Resultado/
+        // Modalidad): mismo criterio de selección que el resto
+        // (selected=[] es "todos", el array acumula valores marcados) pero
+        // sin desplegable — se ven y se pulsan de un vistazo. El resto de
+        // filtros (más variados) se quedan como desplegable.
+        function toggleArrayFilter(key, value) {
+          const cur = activeFilters[key].selected;
+          activeFilters[key].selected = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value];
+          renderStats();
         }
 
-        addFilter('partido', 'Partido', COL_CODE);
+        function createChipGroup(containerId, key, options) {
+          const el = document.getElementById(containerId);
+          function render() {
+            const selected = activeFilters[key].selected;
+            el.innerHTML = options.map((o) => `
+              <button type="button" class="chip ${selected.includes(o.value) ? 'active' : ''}" data-value="${escapeHtml(o.value)}">${o.dot ? `<span class="chip-dot" style="background:${o.dot}"></span>` : ''}${escapeHtml(o.label)}</button>`).join('');
+            el.querySelectorAll('.chip').forEach((btn) => {
+              btn.addEventListener('click', () => { toggleArrayFilter(key, btn.dataset.value); render(); });
+            });
+          }
+          render();
+          return { setSelected: render };
+        }
+
+        // Con pocas jornadas, chips (un vistazo); con muchas (liga completa),
+        // desplegable — si no, la fila de chips crece sin control.
+        const jornadaValues = [...new Set(records.map((r) => r[COL_CODE]).filter(Boolean))].sort();
+        activeFilters.partido = { getValue: (r) => r[COL_CODE], selected: [] };
+        if (jornadaValues.length > 3) {
+          const jornadaFilter = createDropdownFilter({
+            fieldLabel: 'Jornada',
+            options: jornadaValues.map((v) => ({ value: v, label: v })),
+            onChange: (selected) => { activeFilters.partido.selected = selected; renderStats(); }
+          });
+          document.getElementById('jornadaChips').appendChild(jornadaFilter.el);
+          filterComponents.partido = jornadaFilter;
+        } else {
+          filterComponents.partido = createChipGroup('jornadaChips', 'partido', jornadaValues.map((v) => ({ value: v, label: v })));
+        }
+
+        activeFilters.resultado = { getValue: (r) => r['Resultado'], selected: [] };
+        filterComponents.resultado = createChipGroup('resultadoChips', 'resultado', [
+          { value: 'Gol', label: 'Gol', dot: '#0ca30c' },
+          { value: 'Parada', label: 'Parada', dot: '#3987e5' },
+          { value: 'Fuera', label: 'Fuera / palo', dot: '#d95926' }
+        ]);
 
         const timeFilter = createTreeDropdownFilter({
           fieldLabel: 'Tiempo de juego',
@@ -704,7 +979,10 @@
         // Jugador: si hay "Puesto" relleno, agrupado en árbol (puesto >
         // jugadores, igual que Tiempo de juego); si no, el desplegable plano
         // de siempre. Los jugadores sin puesto van a un grupo aparte, para
-        // que no desaparezcan del filtro.
+        // que no desaparezcan del filtro. "Filtrar los filtros": las
+        // opciones se recalculan en cada renderStats() a partir de quién
+        // queda tras el resto de filtros activos (puesto elegido, modalidad
+        // 7 metros...) — ver refreshJugadorFilter, llamado desde renderStats.
         function playersToOptions(rawValues) {
           return [...rawValues]
             .map((raw) => ({ value: raw, ...parsePlayer(raw) }))
@@ -712,11 +990,10 @@
             .map(({ value, label }) => ({ value, label }));
         }
 
-        let playerFilter;
-        if (hasPuesto) {
+        function computeJugadorGroups(scopedRecords) {
           const byPosition = new Map();
           const sinPuesto = new Set();
-          for (const r of records) {
+          for (const r of scopedRecords) {
             const raw = r[COL_PLAYER];
             if (!raw) continue;
             const code = POSITION_LABEL_TO_CODE[r[COL_PUESTO]];
@@ -737,9 +1014,14 @@
           if (sinPuesto.size > 0) {
             groups.push({ value: '__sin_puesto__', label: 'Sin puesto definido', children: playersToOptions(sinPuesto) });
           }
+          return groups;
+        }
+
+        let playerFilter;
+        if (hasPuesto) {
           playerFilter = createTreeDropdownFilter({
             fieldLabel: 'Jugador',
-            groups,
+            groups: computeJugadorGroups(records),
             onChange: (selected) => { activeFilters.jugador.selected = selected; renderStats(); }
           });
         } else {
@@ -754,21 +1036,35 @@
         filterComponents.jugador = playerFilter;
         filtersCol.appendChild(playerFilter.el);
 
-        // Fase de juego: sin buscador, y ordenado por nº de eventos (el más
-        // frecuente primero), no alfabético.
-        const COL_PHASE = 'Fase de juego';
-        const phaseCounts = new Map();
-        for (const r of records) {
-          const v = r[COL_PHASE];
-          if (v) phaseCounts.set(v, (phaseCounts.get(v) || 0) + 1);
+        function refreshJugadorFilter() {
+          const scoped = filteredExcept('jugador');
+          const distinctPlayers = new Set(scoped.map((r) => r[COL_PLAYER]).filter(Boolean));
+          if (hasPuesto) playerFilter.setGroups(computeJugadorGroups(scoped));
+          else playerFilter.setOptions(playersToOptions(distinctPlayers));
+          playerFilter.el.hidden = distinctPlayers.size <= 1;
         }
-        const phaseOptions = [...phaseCounts.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .map(([value]) => ({ value, label: value }));
-        if (phaseOptions.length > 0) {
-          const phaseFilter = createDropdownFilter({
+
+        // Fase de juego: sin buscador, y ordenado por nº de eventos (el más
+        // frecuente primero), no alfabético. Solo tiene sentido en juego —
+        // en un 7 metros no varía, se oculta en ese modo (ver
+        // refreshFaseFilter). Opciones recalculadas en cada renderStats a
+        // partir de lo que queda tras el resto de filtros ("filtrar los
+        // filtros"): si tras elegir puesto/jugador solo queda una fase
+        // posible, el filtro entero desaparece — no serviría de nada.
+        const COL_PHASE = 'Fase de juego';
+        function computePhaseOptions(scopedRecords) {
+          const counts = new Map();
+          for (const r of scopedRecords) {
+            const v = r[COL_PHASE];
+            if (v) counts.set(v, (counts.get(v) || 0) + 1);
+          }
+          return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value]) => ({ value, label: value }));
+        }
+        let phaseFilter = null;
+        if (computePhaseOptions(records).length > 0) {
+          phaseFilter = createDropdownFilter({
             fieldLabel: 'Fase de juego',
-            options: phaseOptions,
+            options: computePhaseOptions(records),
             showSearch: false,
             onChange: (selected) => { activeFilters.fase.selected = selected; renderStats(); }
           });
@@ -777,12 +1073,17 @@
           filtersCol.appendChild(phaseFilter.el);
         }
 
-        // Modalidad: distingue los lanzamientos de 7 metros (sin oposición
-        // real, efectividad muy distinta) de los de juego. Se llama
-        // "Modalidad" y no "Tipo de lanzamiento" para no confundirlo con el
-        // filtro de Tipo de lanzamiento (Potencia/Colocado/...) de más abajo.
+        // Modalidad: en juego vs 7 metros, no es un filtro más — es
+        // excluyente (siempre hay exactamente uno activo, nunca "los dos" ni
+        // "ninguno") porque cambia qué más tiene sentido mostrar: en juego
+        // aplica la Fase de juego y la Zona de lanzamiento; en un 7 metros
+        // la zona no varía (tontería mostrarla) y en cambio sí importa si
+        // hubo amago. El puesto del lanzador tampoco tiene sentido en un 7
+        // metros — se deshabilita entero en vez de recalcularse (ver
+        // renderPositionSelect), al contrario que el resto de filtros.
         const COL_EVENT_TYPE = 'Tipo de evento';
         const EVENT_TYPE_LABELS = { 'Lanzamiento': 'Juego', 'Lanzamiento 7M': '7 metros' };
+        const DEFAULT_EVENT_TYPE = 'Lanzamiento';
         const eventTypeCounts = new Map();
         for (const r of records) {
           const v = r[COL_EVENT_TYPE];
@@ -791,43 +1092,115 @@
         const eventTypeOptions = [...eventTypeCounts.entries()]
           .sort((a, b) => b[1] - a[1])
           .map(([value]) => ({ value, label: EVENT_TYPE_LABELS[value] || value }));
+
+        function isSieteMetros() {
+          return Boolean(activeFilters.tipoEvento && activeFilters.tipoEvento.selected[0] === 'Lanzamiento 7M');
+        }
+
+        function applyModalidadMode(eventType) {
+          const is7m = eventType === 'Lanzamiento 7M';
+          if (is7m && activeFilters.fase) { activeFilters.fase.selected = []; filterComponents.fase.setSelected([]); }
+          if (!is7m && activeFilters.amago) { activeFilters.amago.selected = []; filterComponents.amago.setSelected([]); }
+          const zonePanel = document.getElementById('zoneLanzamientoPanel');
+          if (zonePanel) zonePanel.hidden = is7m;
+        }
+
         if (eventTypeOptions.length > 1) {
-          const eventTypeFilter = createDropdownFilter({
-            fieldLabel: 'Modalidad',
-            options: eventTypeOptions,
-            showSearch: false,
-            onChange: (selected) => { activeFilters.tipoEvento.selected = selected; renderStats(); }
-          });
-          activeFilters.tipoEvento = { getValue: (r) => r[COL_EVENT_TYPE], selected: [] };
-          filterComponents.tipoEvento = eventTypeFilter;
-          filtersCol.appendChild(eventTypeFilter.el);
+          activeFilters.tipoEvento = { getValue: (r) => r[COL_EVENT_TYPE], selected: [DEFAULT_EVENT_TYPE] };
+          document.getElementById('modalidadGroup').hidden = false;
+          const modalidadEl = document.getElementById('modalidadChips');
+          function renderModalidadChips() {
+            const current = activeFilters.tipoEvento.selected[0];
+            modalidadEl.innerHTML = eventTypeOptions.map((o) => `
+              <button type="button" class="chip ${current === o.value ? 'active' : ''}" data-value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</button>`).join('');
+            modalidadEl.querySelectorAll('.chip').forEach((btn) => {
+              btn.addEventListener('click', () => {
+                if (btn.dataset.value === current) return; // siempre exactamente uno activo
+                activeFilters.tipoEvento.selected = [btn.dataset.value];
+                applyModalidadMode(btn.dataset.value);
+                renderModalidadChips();
+                renderStats();
+              });
+            });
+          }
+          renderModalidadChips();
+          filterComponents.tipoEvento = {
+            setSelected: () => { activeFilters.tipoEvento.selected = [DEFAULT_EVENT_TYPE]; applyModalidadMode(DEFAULT_EVENT_TYPE); renderModalidadChips(); }
+          };
+        }
+
+        function refreshFaseFilter() {
+          if (!phaseFilter) return;
+          if (isSieteMetros()) { phaseFilter.el.hidden = true; return; }
+          const options = computePhaseOptions(filteredExcept('fase'));
+          phaseFilter.setOptions(options);
+          phaseFilter.el.hidden = options.length <= 1;
         }
 
         // Filtros simples por columna (sin buscador, ordenados por
-        // frecuencia descendente): Mano y Tipo de lanzamiento.
+        // frecuencia descendente): Mano y Tipo de lanzamiento. Devuelve una
+        // función de refresco (o null si nunca hubo variedad suficiente ni
+        // la habrá: acotar más un filtro nunca añade valores nuevos).
         function addSimpleFilter(key, fieldLabel, column) {
-          const counts = new Map();
-          for (const r of records) {
-            const v = r[column];
-            if (v) counts.set(v, (counts.get(v) || 0) + 1);
+          function computeOptions(scopedRecords) {
+            const counts = new Map();
+            for (const r of scopedRecords) {
+              const v = r[column];
+              if (v) counts.set(v, (counts.get(v) || 0) + 1);
+            }
+            return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value]) => ({ value, label: value }));
           }
-          const options = [...counts.entries()]
-            .sort((a, b) => b[1] - a[1])
-            .map(([value]) => ({ value, label: value }));
-          if (options.length <= 1) return;
+          const initialOptions = computeOptions(records);
+          if (initialOptions.length <= 1) return null;
           const filter = createDropdownFilter({
             fieldLabel,
-            options,
+            options: initialOptions,
             showSearch: false,
             onChange: (selected) => { activeFilters[key].selected = selected; renderStats(); }
           });
           activeFilters[key] = { getValue: (r) => r[column], selected: [] };
           filterComponents[key] = filter;
           filtersCol.appendChild(filter.el);
+          return function refresh() {
+            const options = computeOptions(filteredExcept(key));
+            filter.setOptions(options);
+            filter.el.hidden = options.length <= 1;
+          };
         }
 
-        addSimpleFilter('mano', 'Mano', 'Mano');
-        addSimpleFilter('tipoLanzamiento', 'Tipo de lanzamiento', 'Tipo de lanzamiento');
+        const refreshManoFilter = addSimpleFilter('mano', 'Mano', 'Mano');
+        const refreshTipoLanzamientoFilter = addSimpleFilter('tipoLanzamiento', 'Tipo de lanzamiento', 'Tipo de lanzamiento');
+
+        // "Con amago" es un campo tipo casilla en la plantilla: solo se
+        // guarda "Sí" cuando está marcado, en blanco si no — nunca hay un
+        // segundo valor real "No" que contar, así que addSimpleFilter (que
+        // exige >=2 valores distintos) nunca lo mostraría. Se construye
+        // aparte, ofreciendo "No" como el hueco en blanco. Solo tiene
+        // sentido en un 7 metros.
+        let amagoFilter = null;
+        if (records.some((r) => r['Con amago'])) {
+          amagoFilter = createDropdownFilter({
+            fieldLabel: 'Con amago',
+            options: [{ value: 'Sí', label: 'Sí' }, { value: '', label: 'No' }],
+            showSearch: false,
+            onChange: (selected) => { activeFilters.amago.selected = selected; renderStats(); }
+          });
+          activeFilters.amago = { getValue: (r) => r['Con amago'] || '', selected: [] };
+          filterComponents.amago = amagoFilter;
+          filtersCol.appendChild(amagoFilter.el);
+        }
+
+        function refreshAmagoFilter() {
+          if (!amagoFilter) return;
+          if (!isSieteMetros()) { amagoFilter.el.hidden = true; return; }
+          const present = new Set(filteredExcept('amago').map((r) => r['Con amago'] || ''));
+          amagoFilter.el.hidden = present.size <= 1;
+        }
+
+        // Estado inicial: en juego (Fase visible, Con amago oculto, Zona de
+        // lanzamiento visible) — el mismo camino tanto si hay modalidad para
+        // elegir como si no (un equipo sin ningún 7 metros registrado).
+        applyModalidadMode(DEFAULT_EVENT_TYPE);
 
         // Zona de lanzamiento y zona de portería no tienen desplegable propio
         // en la columna de filtros: se activan solo al pulsar sobre el
@@ -847,6 +1220,12 @@
           renderStats();
         });
 
+        document.getElementById('tableToggle').addEventListener('click', () => {
+          const wrap = document.getElementById('tableWrap');
+          wrap.hidden = !wrap.hidden;
+          document.getElementById('tableToggle').textContent = wrap.hidden ? 'Ver tabla completa ▾' : 'Ocultar tabla ▴';
+        });
+
         document.getElementById('filtersReset').addEventListener('click', () => {
           for (const key of Object.keys(activeFilters)) {
             activeFilters[key].selected = [];
@@ -855,8 +1234,8 @@
           renderStats();
         });
 
-        function figure(n, label) {
-          return `<div class="figure"><span class="n">${n}</span><span class="l">${label}</span></div>`;
+        function statTile(value, label) {
+          return `<div class="stat-tile"><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>`;
         }
 
         // Registros que cumplen todos los filtros activos EXCEPTO los
@@ -872,6 +1251,16 @@
         }
 
         function renderStats() {
+          // "Filtrar los filtros": antes de calcular nada, cada filtro
+          // dependiente recalcula sus propias opciones a partir de lo que
+          // queda tras el resto de filtros activos, y se oculta si ya no
+          // puede distinguir nada (una sola opción posible).
+          refreshJugadorFilter();
+          if (refreshManoFilter) refreshManoFilter();
+          if (refreshTipoLanzamientoFilter) refreshTipoLanzamientoFilter();
+          refreshFaseFilter();
+          refreshAmagoFilter();
+
           const filtered = filteredExcept();
 
           const lanzamientos = filtered.length;
@@ -881,17 +1270,142 @@
           const golesPorPartido = goles / partidosDistintos;
           const golesPorPartidoLabel = Number.isInteger(golesPorPartido) ? golesPorPartido : golesPorPartido.toFixed(1);
 
+          if (hasPuesto) {
+            const puestoCode = activeFilters.puesto.selected[0];
+            document.getElementById('statHeadlineTitle').textContent = puestoCode
+              ? `Resumen · ${POSITION_LABELS[puestoCode]}`
+              : 'Resumen';
+          }
           document.getElementById('statHeadline').innerHTML =
-            figure(lanzamientos, 'lanzamientos') +
-            figure(goles, 'goles') +
-            figure(`${efectividad}%`, 'efectividad') +
-            figure(golesPorPartidoLabel, 'goles por partido');
+            statTile(lanzamientos, 'lanzamientos') +
+            statTile(goles, 'goles') +
+            statTile(`${efectividad}%`, 'efectividad') +
+            statTile(golesPorPartidoLabel, 'goles por partido');
 
           renderPlayerComparison(filteredExcept('jugador'));
           renderZonePositionChart(filteredExcept('zonaLanzamiento'));
           renderGoalZoneChart(filteredExcept('zonaPorteria'));
-          if (hasPuesto) renderPositionEfficacyChart(filteredExcept('puesto'));
+          if (hasPuesto) renderPositionSelect(filteredExcept('puesto'));
+          renderClips(filtered);
           renderDetailTable(filtered);
+        }
+
+        // Orden por defecto de las jugadas: cronológico (partido > parte >
+        // tiempo) — lo usan tanto los Clips como la tabla de detalle (esta
+        // última lo sustituye por su propio orden si se pulsa una cabecera).
+        function sortChronological(rows) {
+          return [...rows].sort((a, b) => {
+            const codeA = a[COL_CODE] || '', codeB = b[COL_CODE] || '';
+            if (codeA !== codeB) return codeA < codeB ? -1 : 1;
+            const partA = a['Parte'] || '', partB = b['Parte'] || '';
+            if (partA !== partB) return partA < partB ? -1 : 1;
+            return (a['Tiempo de partido'] || '').localeCompare(b['Tiempo de partido'] || '');
+          });
+        }
+
+        function formatClipTime(sec) {
+          sec = Math.max(0, Math.floor(sec));
+          return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+        }
+
+        // ── Clips: miniaturas reales de YouTube (img.youtube.com/vi/<id>/...)
+        // en vez de la tabla como forma principal de abrir un vídeo — la
+        // tabla sigue disponible, colapsada, en "Ver tabla completa". Un tope
+        // (CAP) evita renderizar cientos de <img> a la vez si el filtro es
+        // muy amplio; el modal de vídeo sigue pudiendo navegar más allá de
+        // las tarjetas visibles (currentVideoRows es la lista completa, no
+        // solo las mostradas).
+        function renderClips(filtered) {
+          const panel = document.getElementById('clipsPanel');
+          const clipRows = sortChronological(filtered).filter((r) => r[COL_YOUTUBE]);
+          if (clipRows.length === 0) { panel.hidden = true; return; }
+          panel.hidden = false;
+
+          document.getElementById('clipsCount').textContent = `${clipRows.length} clip${clipRows.length === 1 ? '' : 's'}`;
+
+          const CAP = 24;
+          const shown = clipRows.slice(0, CAP);
+          const cardsHtml = shown.map((r, i) => {
+            const resultado = r['Resultado'] || '';
+            const pillClass = resultPillClass(resultado, false);
+            const playerLabel = r[COL_PLAYER] ? parsePlayer(r[COL_PLAYER]).label : '';
+            const zone = formatZoneLabel(r[COL_POSITION]);
+            const context = [r[COL_CODE], r['Parte'], r['Tiempo de partido']].filter(Boolean).join(' · ');
+            const startSec = Math.max(0, Math.floor(Number(r[COL_CLIP_START]) || 0));
+            return `
+              <button type="button" class="clip-card" data-idx="${i}">
+                <div class="clip-thumb">
+                  <img src="https://img.youtube.com/vi/${encodeURIComponent(r[COL_YOUTUBE])}/mqdefault.jpg" alt="" loading="lazy" />
+                  <span class="clip-play">▶</span>
+                  <span class="clip-time">${formatClipTime(startSec)}</span>
+                </div>
+                <div class="clip-meta">
+                  ${resultado ? `<span class="result-pill ${pillClass}">${escapeHtml(resultado)}</span>` : ''}
+                  <span class="clip-player">${escapeHtml(playerLabel)}</span>
+                </div>
+                <div class="clip-sub">${escapeHtml([zone, context].filter(Boolean).join(' · '))}</div>
+              </button>`;
+          }).join('');
+          const moreHtml = clipRows.length > CAP
+            ? `<div class="clips-more">+${clipRows.length - CAP} clips más — abre "Ver tabla completa" para verlos todos</div>`
+            : '';
+          document.getElementById('filmstrip').innerHTML = cardsHtml + moreHtml;
+
+          document.querySelectorAll('#filmstrip .clip-card').forEach((card) => {
+            const idx = Number(card.dataset.idx);
+            card.addEventListener('click', () => {
+              currentVideoRows = clipRows;
+              openVideoModal(clipRows[idx], idx);
+            });
+          });
+        }
+
+        // ── Selector de puesto: navegación principal (sustituye al antiguo
+        // gráfico "Efectividad por puesto" — misma agregación, pero como
+        // tarjetas grandes arriba del todo en vez de una barra más entre
+        // otras). Sigue actuando como filtro clicable vía togglePuestoFilter,
+        // ya usado también por el detalle de jugador. No incluye "Portero"
+        // (PT): un portero prácticamente no lanza.
+        function renderPositionSelect(filtered) {
+          const wrap = document.getElementById('positionSelect');
+          // El puesto del lanzador no tiene sentido en un 7 metros — al
+          // contrario que el resto de filtros, aquí no se recalculan
+          // opciones, se deshabilita entero y se limpia cualquier selección
+          // previa (ver applyModalidadMode, que ya lo hacía para Fase/Amago).
+          if (isSieteMetros()) {
+            if (activeFilters.puesto.selected.length > 0) activeFilters.puesto.selected = [];
+            wrap.innerHTML = POSITION_ORDER
+              .filter((code) => code !== 'PT')
+              .map((code) => `<button type="button" class="pos-card" disabled>
+                <div class="pos-name">${POSITION_LABELS[code]}</div>
+                <div class="pos-figures">No aplica en 7 metros</div>
+              </button>`).join('');
+            return;
+          }
+          const byPosition = new Map();
+          for (const r of filtered) {
+            const code = POSITION_LABEL_TO_CODE[r[COL_PUESTO]];
+            if (!code) continue;
+            const entry = byPosition.get(code) || { lanzamientos: 0, goles: 0 };
+            entry.lanzamientos++;
+            if (/gol/i.test(r['Resultado'] || '')) entry.goles++;
+            byPosition.set(code, entry);
+          }
+          const selected = activeFilters.puesto.selected;
+          wrap.innerHTML = POSITION_ORDER
+            .filter((code) => code !== 'PT')
+            .map((code) => {
+              const data = byPosition.get(code) || { lanzamientos: 0, goles: 0 };
+              const eff = data.lanzamientos ? Math.round((data.goles / data.lanzamientos) * 100) : 0;
+              const isActive = selected.includes(code);
+              return `<button type="button" class="pos-card ${isActive ? 'active' : ''}" data-code="${code}">
+                <div class="pos-name">${POSITION_LABELS[code]}</div>
+                <div class="pos-figures">${data.lanzamientos} lanz. · ${eff}% efic.</div>
+              </button>`;
+            }).join('');
+          document.querySelectorAll('#positionSelect .pos-card').forEach((btn) => {
+            btn.addEventListener('click', () => togglePuestoFilter(btn.dataset.code));
+          });
         }
 
         // ── Comparativa de jugadores: siempre visible (actúa también como
@@ -913,11 +1427,10 @@
 
           const players = [...byPlayer.entries()]
             .map(([raw, { lanzamientos, goles }]) => {
-              const { dorsal, label } = parsePlayer(raw);
+              const { label } = parsePlayer(raw);
               return {
                 raw,
                 fullLabel: label,
-                dorsalLabel: String(dorsal),
                 lanzamientos,
                 goles,
                 efectividad: lanzamientos > 0 ? Math.round((goles / lanzamientos) * 100) : 0
@@ -925,10 +1438,23 @@
             })
             .sort((a, b) => b.lanzamientos - a.lanzamientos);
 
-          document.getElementById('playerComparisonChart').innerHTML = buildPlayerComparisonSVG(players);
+          const maxLanz = Math.max(1, ...players.map((p) => p.lanzamientos));
+          const selectedPlayers = activeFilters.jugador.selected;
+          document.getElementById('playerComparisonChart').innerHTML = players.map((p) => {
+            const isActive = selectedPlayers.includes(p.raw);
+            return `
+              <div class="scorer-row ${isActive ? 'active' : ''}" data-player="${escapeHtml(p.raw)}">
+                <div class="scorer-head"><span class="scorer-name">${escapeHtml(p.fullLabel)}</span><span class="scorer-eff">${p.lanzamientos ? p.efectividad + '%' : '—'}</span></div>
+                <div class="scorer-bars">
+                  <div class="scorer-bar-track"><div class="scorer-bar-fill lanz" style="width:${(p.lanzamientos / maxLanz * 100).toFixed(0)}%"></div></div>
+                  <div class="scorer-bar-track"><div class="scorer-bar-fill gol" style="width:${(p.goles / maxLanz * 100).toFixed(0)}%"></div></div>
+                </div>
+                <div class="scorer-figures"><span>${p.lanzamientos} lanz.</span><span>${p.goles} goles</span></div>
+              </div>`;
+          }).join('');
 
-          document.querySelectorAll('#playerComparisonChart .player-bar-group').forEach((g) => {
-            g.addEventListener('click', () => togglePlayerFilter(g.dataset.player));
+          document.querySelectorAll('#playerComparisonChart .scorer-row').forEach((row) => {
+            row.addEventListener('click', () => togglePlayerFilter(row.dataset.player));
           });
         }
 
@@ -943,176 +1469,10 @@
           renderStats();
         }
 
-        // ── Efectividad por puesto: mismo formato que la comparativa de
-        // jugadores (columnas lanzamientos/goles + etiqueta), pero agrupado
-        // por puesto y en el orden fijo de la pista (no por frecuencia).
-        // También actúa como filtro clicable, igual que el resto.
-        function renderPositionEfficacyChart(filtered) {
-          const panel = document.getElementById('positionEfficacyPanel');
-          const byPosition = new Map();
-          for (const r of filtered) {
-            const code = POSITION_LABEL_TO_CODE[r[COL_PUESTO]];
-            if (!code) continue;
-            const entry = byPosition.get(code) || { lanzamientos: 0, goles: 0 };
-            entry.lanzamientos++;
-            if (/gol/i.test(r['Resultado'] || '')) entry.goles++;
-            byPosition.set(code, entry);
-          }
-
-          const items = POSITION_ORDER
-            .filter((code) => (byPosition.get(code)?.lanzamientos ?? 0) > 0)
-            .map((code) => {
-              const { lanzamientos, goles } = byPosition.get(code);
-              return {
-                code,
-                fullLabel: POSITION_LABELS[code],
-                shortLabel: POSITION_LABELS_SHORT[code],
-                lanzamientos,
-                goles,
-                efectividad: Math.round((goles / lanzamientos) * 100)
-              };
-            })
-            .sort((a, b) => b.lanzamientos - a.lanzamientos);
-
-          if (items.length === 0) { panel.hidden = true; return; }
-          panel.hidden = false;
-
-          document.getElementById('positionEfficacyChart').innerHTML = buildPositionEfficacySVG(items);
-
-          document.querySelectorAll('#positionEfficacyChart .position-bar-group').forEach((g) => {
-            g.addEventListener('click', () => togglePuestoFilter(g.dataset.code));
-          });
-        }
-
         function togglePuestoFilter(code) {
           const cur = activeFilters.puesto.selected;
           activeFilters.puesto.selected = (cur.length === 1 && cur[0] === code) ? [] : [code];
           renderStats();
-        }
-
-        function buildPositionEfficacySVG(items) {
-          const W = 800, H = 260;
-          const marginTop = 26, marginBottom = 34, marginLeft = 30, marginRight = 10;
-          const plotW = W - marginLeft - marginRight;
-          const plotH = H - marginTop - marginBottom;
-          const n = items.length;
-          const groupW = plotW / n;
-          const barW = Math.min(28, groupW * 0.32);
-          const gap = 2;
-          const axisMax = niceMax(Math.max(...items.map((p) => p.lanzamientos)));
-          const COLOR_LANZ = '#9085e9';
-          const COLOR_GOL = '#d95926';
-          const TEXT_MUTED = '#898781';
-          const TEXT_SECONDARY = '#c3c2b7';
-          const GRID = '#2c2c2a';
-          const AXIS = '#383835';
-          const selectedPositions = activeFilters.puesto.selected;
-
-          let gridSvg = '';
-          for (let v = 0; v <= axisMax; v += 5) {
-            const y = marginTop + plotH - (v / axisMax) * plotH;
-            gridSvg += `<line x1="${marginLeft}" y1="${y}" x2="${W - marginRight}" y2="${y}" stroke="${v === 0 ? AXIS : GRID}" stroke-width="1" />`;
-            gridSvg += `<text x="${marginLeft - 6}" y="${y}" text-anchor="end" dominant-baseline="middle" fill="${TEXT_MUTED}" font-size="10">${v}</text>`;
-          }
-
-          let groupsSvg = '';
-          items.forEach((p, i) => {
-            const centerX = marginLeft + i * groupW + groupW / 2;
-            const groupX = marginLeft + i * groupW;
-            const lanzH = (p.lanzamientos / axisMax) * plotH;
-            const golH = (p.goles / axisMax) * plotH;
-            const lanzY = marginTop + plotH - lanzH;
-            const golY = marginTop + plotH - golH;
-            const lanzX = centerX - barW - gap / 2;
-            const golX = centerX + gap / 2;
-
-            const isSelected = selectedPositions.includes(p.code);
-            const isDimmed = selectedPositions.length > 0 && !isSelected;
-            const highlight = isSelected ? ` stroke="#fff" stroke-width="1.5"` : '';
-
-            const topY = Math.min(lanzY, golY);
-
-            // Nombre completo si cabe, si no una abreviatura, si tampoco el código.
-            const CHAR_W = 5.8;
-            const fitsFull = p.fullLabel.length * CHAR_W <= groupW - 4;
-            const fitsShort = p.shortLabel.length * CHAR_W <= groupW - 4;
-            const xLabel = fitsFull ? p.fullLabel : fitsShort ? p.shortLabel : p.code;
-
-            groupsSvg += `
-              <g class="position-bar-group" data-code="${p.code}" opacity="${isDimmed ? 0.35 : 1}">
-                <rect x="${groupX}" y="0" width="${groupW}" height="${H}" fill="transparent" />
-                <rect x="${lanzX}" y="${lanzY}" width="${barW}" height="${Math.max(0, lanzH)}" rx="4" fill="${COLOR_LANZ}"${highlight}><title>${escapeHtml(p.fullLabel)} — Lanzamientos: ${p.lanzamientos}</title></rect>
-                <rect x="${golX}" y="${golY}" width="${barW}" height="${Math.max(0, golH)}" rx="4" fill="${COLOR_GOL}"${highlight}><title>${escapeHtml(p.fullLabel)} — Goles: ${p.goles}</title></rect>
-                <text x="${centerX}" y="${Math.max(marginTop - 8, topY - 6)}" text-anchor="middle" fill="${TEXT_SECONDARY}" font-size="10" style="pointer-events:none">${p.goles}/${p.lanzamientos} (${p.efectividad}%)</text>
-                <text x="${centerX}" y="${marginTop + plotH + 15}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="10" style="pointer-events:none">${escapeHtml(xLabel)}</text>
-              </g>`;
-          });
-
-          return `<svg viewBox="0 0 ${W} ${H}" class="player-chart-svg" role="img" aria-label="Efectividad por puesto: lanzamientos y goles">
-            ${gridSvg}
-            ${groupsSvg}
-          </svg>`;
-        }
-
-        function buildPlayerComparisonSVG(players) {
-          const W = 800, H = 300;
-          const marginTop = 26, marginBottom = 34, marginLeft = 30, marginRight = 10;
-          const plotW = W - marginLeft - marginRight;
-          const plotH = H - marginTop - marginBottom;
-          const n = players.length;
-          const groupW = plotW / n;
-          const barW = Math.min(24, groupW * 0.32);
-          const gap = 2;
-          const axisMax = niceMax(Math.max(...players.map((p) => p.lanzamientos)));
-          const COLOR_LANZ = '#9085e9';
-          const COLOR_GOL = '#d95926';
-          const TEXT_MUTED = '#898781';
-          const TEXT_SECONDARY = '#c3c2b7';
-          const GRID = '#2c2c2a';
-          const AXIS = '#383835';
-
-          let gridSvg = '';
-          for (let v = 0; v <= axisMax; v += 5) {
-            const y = marginTop + plotH - (v / axisMax) * plotH;
-            gridSvg += `<line x1="${marginLeft}" y1="${y}" x2="${W - marginRight}" y2="${y}" stroke="${v === 0 ? AXIS : GRID}" stroke-width="1" />`;
-            gridSvg += `<text x="${marginLeft - 6}" y="${y}" text-anchor="end" dominant-baseline="middle" fill="${TEXT_MUTED}" font-size="10">${v}</text>`;
-          }
-
-          const selectedPlayers = activeFilters.jugador.selected;
-
-          let groupsSvg = '';
-          players.forEach((p, i) => {
-            const centerX = marginLeft + i * groupW + groupW / 2;
-            const groupX = marginLeft + i * groupW;
-            const lanzH = (p.lanzamientos / axisMax) * plotH;
-            const golH = (p.goles / axisMax) * plotH;
-            const lanzY = marginTop + plotH - lanzH;
-            const golY = marginTop + plotH - golH;
-            const lanzX = centerX - barW - gap / 2;
-            const golX = centerX + gap / 2;
-
-            const isSelected = selectedPlayers.includes(p.raw);
-            const isDimmed = selectedPlayers.length > 0 && !isSelected;
-            const highlight = isSelected ? ` stroke="#fff" stroke-width="1.5"` : '';
-
-            const topY = Math.min(lanzY, golY);
-            const fitsFull = p.fullLabel.length * 5.2 <= groupW - 4;
-            const xLabel = fitsFull ? p.fullLabel : p.dorsalLabel;
-
-            groupsSvg += `
-              <g class="player-bar-group" data-player="${escapeHtml(p.raw)}" opacity="${isDimmed ? 0.35 : 1}">
-                <rect x="${groupX}" y="0" width="${groupW}" height="${H}" fill="transparent" />
-                <rect x="${lanzX}" y="${lanzY}" width="${barW}" height="${Math.max(0, lanzH)}" rx="4" fill="${COLOR_LANZ}"${highlight}><title>${escapeHtml(p.fullLabel)} — Lanzamientos: ${p.lanzamientos}</title></rect>
-                <rect x="${golX}" y="${golY}" width="${barW}" height="${Math.max(0, golH)}" rx="4" fill="${COLOR_GOL}"${highlight}><title>${escapeHtml(p.fullLabel)} — Goles: ${p.goles}</title></rect>
-                <text x="${centerX}" y="${Math.max(marginTop - 8, topY - 6)}" text-anchor="middle" fill="${TEXT_SECONDARY}" font-size="10" style="pointer-events:none">${p.goles}/${p.lanzamientos} (${p.efectividad}%)</text>
-                <text x="${centerX}" y="${marginTop + plotH + 15}" text-anchor="middle" fill="${TEXT_MUTED}" font-size="9" style="pointer-events:none">${escapeHtml(xLabel)}</text>
-              </g>`;
-          });
-
-          return `<svg viewBox="0 0 ${W} ${H}" class="player-chart-svg" role="img" aria-label="Comparativa de jugadores: lanzamientos y goles">
-            ${gridSvg}
-            ${groupsSvg}
-          </svg>`;
         }
 
         // ── Zona de lanzamiento: mismas 13 zonas e imagen de pista que usa
@@ -1162,7 +1522,7 @@
 
           document.getElementById('zonePositionChart').innerHTML = `
             <svg viewBox="0 0 ${COURT_W} ${COURT_H}" class="zone-bubble-svg" role="img" aria-label="Zona de lanzamiento: lanzamientos y goles por zona">
-              <image href="assets/half-court.png" x="0" y="0" width="${COURT_W}" height="${COURT_H}" />
+              <image href="../assets/half-court.png" x="0" y="0" width="${COURT_W}" height="${COURT_H}" />
               ${bubblesSvg}
             </svg>`;
 
@@ -1317,16 +1677,11 @@
           if (filtered.length === 0) { panel.hidden = true; return; }
           panel.hidden = false;
 
-          // Orden por defecto: cronológico (partido > parte > tiempo). Si se
-          // ha pulsado una cabecera, se reordena por esa columna pero de
-          // forma estable, así los empates mantienen el orden cronológico.
-          let rows = [...filtered].sort((a, b) => {
-            const codeA = a[COL_CODE] || '', codeB = b[COL_CODE] || '';
-            if (codeA !== codeB) return codeA < codeB ? -1 : 1;
-            const partA = a['Parte'] || '', partB = b['Parte'] || '';
-            if (partA !== partB) return partA < partB ? -1 : 1;
-            return (a['Tiempo de partido'] || '').localeCompare(b['Tiempo de partido'] || '');
-          });
+          // Orden por defecto: cronológico (partido > parte > tiempo, mismo
+          // criterio que los Clips). Si se ha pulsado una cabecera, se
+          // reordena por esa columna pero de forma estable, así los empates
+          // mantienen el orden cronológico.
+          let rows = sortChronological(filtered);
 
           if (detailSort.key) {
             const col = DETAIL_COLUMNS.find((c) => c.key === detailSort.key);
@@ -1351,9 +1706,11 @@
           const head = `<thead><tr>${headCells}<th>Vídeo</th></tr></thead>`;
 
           // Índice dentro de "solo las filas con vídeo" (no de "rows" entero),
-          // que es la lista que usan luego los botones Anterior/Siguiente.
+          // que es la lista que usan luego los botones Anterior/Siguiente —
+          // asignada a currentVideoRows solo al pulsar "Ver" (no aquí, al
+          // renderizar), para no pisar la lista de los Clips si ambos
+          // paneles están visibles a la vez.
           const videoRows = rows.filter((r) => r[COL_YOUTUBE]);
-          currentVideoRows = videoRows;
           let videoCounter = 0;
 
           const body = rows.map((r) => {
@@ -1372,7 +1729,7 @@
 
           document.querySelectorAll('#detailTable .video-link').forEach((btn) => {
             const idx = Number(btn.dataset.rowIdx);
-            btn.addEventListener('click', () => openVideoModal(videoRows[idx], idx));
+            btn.addEventListener('click', () => { currentVideoRows = videoRows; openVideoModal(videoRows[idx], idx); });
           });
 
           document.querySelectorAll('#detailTable th.sortable').forEach((th) => {
@@ -1393,12 +1750,10 @@
       // mapas de zona, tabla de detalle + vídeo) pero desde el punto de
       // vista del portero — el Puesto es siempre "Portero" (desplegable de
       // jugador plano, sin agrupar) y el % clave es de paradas, no de goles.
-      const porteroEntries = entries.filter((e) => e.mode === 'portero');
-      if (porteroEntries.length === 0) {
-        panels.portero.innerHTML = '<div class="empty-state">Sin datos de portero para este rival todavía.</div>';
+      const gkRecords = await fetchTeamRecords(channelId, team, 'portero');
+      if (gkRecords.length === 0) {
+        panels.portero.innerHTML = '<div class="empty-state">Sin datos de portero para este equipo todavía.</div>';
       } else {
-        const gkDatasets = await Promise.all(porteroEntries.map((e) => fetchJSON(`data/lanzamientos/${e.id}.json`)));
-        const gkRecords = gkDatasets.flatMap((d) => d.records);
 
         panels.portero.innerHTML = `
           <button type="button" class="filters-toggle" id="filtersToggleGk">☰ Filtros</button>
@@ -1765,7 +2120,7 @@
 
           document.getElementById('zonePositionChartGk').innerHTML = `
             <svg viewBox="0 0 ${COURT_W} ${COURT_H}" class="zone-bubble-svg" role="img" aria-label="Zona de lanzamiento rival: paradas y goles por zona">
-              <image href="assets/half-court.png" x="0" y="0" width="${COURT_W}" height="${COURT_H}" />
+              <image href="../assets/half-court.png" x="0" y="0" width="${COURT_W}" height="${COURT_H}" />
               ${bubblesSvg}
             </svg>`;
 

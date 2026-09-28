@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mis equipos — VideoCuts</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" />
+<link rel="stylesheet" href="../assets/app.css" />
+</head>
+<body>
+  <header class="site-header">
+    <h1>📊 VideoCuts</h1>
+    <span class="meta" id="userEmail"></span>
+    <span class="spacer"></span>
+    <button type="button" class="nav-link" id="logoutBtn" style="cursor:pointer;border:1px solid var(--accent-border);">Cerrar sesión</button>
+  </header>
+  <div class="home-wrap">
+    <input type="search" id="teamSearch" class="team-search" placeholder="Buscar equipo…" hidden />
+    <div id="teams" class="channel-groups"></div>
+  </div>
+
+<script type="module">
+  import { escapeHtml } from '../assets/app.js'
+  import { requireSession, getAccessibleTeams, logout } from '../assets/supabase.js'
+
+  function normalize(value) {
+    return value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  }
+
+  function groupByChannel(teams) {
+    const map = new Map()
+    for (const t of teams) {
+      if (!map.has(t.channelId)) map.set(t.channelId, { channelName: t.channelName, teams: [] })
+      map.get(t.channelId).teams.push(t)
+    }
+    return [...map.values()].sort((a, b) => a.channelName.localeCompare(b.channelName))
+  }
+
+  function renderTeams(el, teams) {
+    if (teams.length === 0) {
+      el.innerHTML = '<div class="empty-state">Ningún equipo coincide con la búsqueda.</div>'
+      return
+    }
+    el.innerHTML = groupByChannel(teams).map((g) => `
+      <section class="channel-group">
+        <h2 class="channel-title">${escapeHtml(g.channelName)}</h2>
+        <div class="match-grid">
+          ${g.teams.map((t) => `
+            <a class="match-card" href="canal.html?id=${encodeURIComponent(t.channelId)}&equipo=${encodeURIComponent(t.team)}">
+              <div class="name">${escapeHtml(t.team)}</div>
+              <div class="figures"><span><b>${t.matchCount}</b> partido${t.matchCount === 1 ? '' : 's'} analizado${t.matchCount === 1 ? '' : 's'}</span></div>
+            </a>`).join('')}
+        </div>
+      </section>`).join('')
+  }
+
+  const session = await requireSession()
+  if (session) {
+    document.getElementById('userEmail').textContent = session.user.email
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await logout()
+      location.href = 'login.html'
+    })
+
+    const el = document.getElementById('teams')
+    const searchInput = document.getElementById('teamSearch')
+    try {
+      const teams = await getAccessibleTeams()
+      if (teams.length === 0) {
+        el.innerHTML = '<div class="empty-state">Todavía no tienes acceso a ningún equipo. Pide al publicador un enlace de invitación.</div>'
+      } else {
+        searchInput.hidden = false
+        renderTeams(el, teams)
+        searchInput.addEventListener('input', () => {
+          const q = normalize(searchInput.value.trim())
+          const filtered = q ? teams.filter((t) => normalize(t.team).includes(q)) : teams
+          renderTeams(el, filtered)
+        })
+      }
+    } catch (err) {
+      el.innerHTML = `<div class="empty-state">No se han podido cargar tus equipos. ${escapeHtml(err.message)}</div>`
+    }
+  }
+</script>
+</body>
+</html>
