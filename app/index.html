@@ -12,6 +12,7 @@
     <h1>📊 VideoCuts</h1>
     <span class="meta" id="userEmail"></span>
     <span class="spacer"></span>
+    <a class="nav-link" href="admin.html" id="adminLink" hidden>Administrar</a>
     <button type="button" class="nav-link" id="logoutBtn" style="cursor:pointer;border:1px solid var(--accent-border);">Cerrar sesión</button>
   </header>
   <div class="home-wrap">
@@ -21,7 +22,7 @@
 
 <script type="module">
   import { escapeHtml } from '../assets/app.js'
-  import { requireSession, getAccessibleTeams, logout } from '../assets/supabase.js'
+  import { requireSession, getAccessibleTeams, getOwnedChannels, logout } from '../assets/supabase.js'
 
   function normalize(value) {
     return value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -61,6 +62,10 @@
       await logout()
       location.href = 'login.html'
     })
+
+    getOwnedChannels().then((owned) => {
+      if (owned.length > 0) document.getElementById('adminLink').hidden = false
+    }).catch(() => {})
 
     const el = document.getElementById('teams')
     const searchInput = document.getElementById('teamSearch')

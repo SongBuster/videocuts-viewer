@@ -108,3 +108,70 @@ export async function redeemInvite(token) {
   if (error) throw new Error(error.message)
   return data // channel_id
 }
+
+// ─── Administración (app/admin.html) ───────────────────────────────────────
+// Solo útil para quien ha iniciado sesión con la cuenta que posee los
+// canales — RLS ya limita todo esto a "lo mío": un usuario sin canales
+// propios simplemente ve listas vacías, no hace falta un rol aparte.
+
+export async function getOwnedChannels() {
+  const session = await getSession()
+  if (!session) return []
+  const { data, error } = await supabase
+    .from('channels')
+    .select('id, name, created_at')
+    .eq('owner_id', session.user.id)
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
+
+export async function createChannel(name) {
+  const session = await getSession()
+  if (!session) throw new Error('Inicia sesión antes de crear un canal.')
+  const { data, error } = await supabase
+    .from('channels')
+    .insert({ name, owner_id: session.user.id })
+    .select('id, name, created_at')
+    .single()
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function createInvite(channelId) {
+  const session = await getSession()
+  if (!session) throw new Error('Inicia sesión antes de generar una invitación.')
+  const { data, error } = await supabase
+    .from('channel_invites')
+    .insert({ channel_id: channelId, created_by: session.user.id })
+    .select('token')
+    .single()
+  if (error) throw new Error(error.message)
+  return data.token
+}
+
+export async function revokeInvite(token) {
+  const { error } = await supabase.from('channel_invites').update({ revoked: true }).eq('token', token)
+  if (error) throw new Error(error.message)
+}
+
+export async function listChannelInvites(channelId) {
+  const { data, error } = await supabase.rpc('admin_list_channel_invites', { p_channel_id: channelId })
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
+
+export async function listChannelViewers(channelId) {
+  const { data, error } = await supabase.rpc('admin_list_channel_viewers', { p_channel_id: channelId })
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
+
+export async function revokeAccess(channelId, userId) {
+  const { error } = await supabase
+    .from('channel_access')
+    .delete()
+    .eq('channel_id', channelId)
+    .eq('user_id', userId)
+  if (error) throw new Error(error.message)
+}
