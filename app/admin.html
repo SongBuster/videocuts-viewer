@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Administrar canales — VideoCuts</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" />
+<link rel="stylesheet" href="../assets/app.css" />
+<style>
+  .admin-wrap { max-width: 760px; margin: 0 auto; padding: 28px 20px 60px; display: flex; flex-direction: column; gap: 22px; }
+  .new-channel-row { display: flex; gap: 8px; }
+  .new-channel-row input {
+    flex: 1; background: #1a1a1a; border: 1px solid #333; border-radius: 6px;
+    color: #e0e0e0; padding: 9px 11px; font-size: 13px; outline: none;
+  }
+  .new-channel-row button, .invite-create-btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 9px 16px; font-size: 13px; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  }
+  .new-channel-row button:disabled, .invite-create-btn:disabled { opacity: .6; cursor: default; }
+
+  .admin-error { color: #ef4444; font-size: 12px; margin-top: 8px; }
+
+  .admin-section { margin-top: 16px; }
+  .admin-section-title {
+    color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    margin-bottom: 8px;
+  }
+  .admin-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px;
+  }
+  .admin-row:last-child { border-bottom: none; }
+  .admin-row .who { color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .admin-row .when { color: #666; font-size: 11px; flex-shrink: 0; }
+  .admin-row .actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .admin-empty { color: #555; font-size: 12px; padding: 6px 0; }
+
+  .status-pill {
+    display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .03em; flex-shrink: 0;
+    background: rgba(255,255,255,0.08); color: var(--text-secondary);
+  }
+  .status-pill.pending { background: rgba(144,133,233,0.16); color: var(--accent-text); }
+  .status-pill.used { background: rgba(12,163,12,0.16); color: #4fd37a; }
+  .status-pill.revoked, .status-pill.expired { background: rgba(208,59,59,0.16); color: #f27a7a; }
+
+  .link-btn {
+    background: transparent; border: 1px solid #333; color: #999; border-radius: 999px;
+    padding: 3px 10px; font-size: 11px; cursor: pointer; white-space: nowrap;
+  }
+  .link-btn:hover { border-color: #666; color: #ccc; }
+  .link-btn.danger:hover { border-color: #d03b3b; color: #f27a7a; }
+
+  .invite-link-box { display: flex; gap: 6px; margin-top: 10px; }
+  .invite-link-box input {
+    flex: 1; background: #111; border: 1px solid #333; border-radius: 5px;
+    color: #888; padding: 6px 9px; font-size: 12px;
+  }
+</style>
+</head>
+<body>
+  <header class="site-header">
+    <h1>📊 VideoCuts</h1>
+    <span class="meta">Administrar canales</span>
+    <span class="spacer"></span>
+    <a class="nav-link" href="index.html">Ver equipos</a>
+    <button type="button" class="nav-link" id="logoutBtn" style="cursor:pointer;border:1px solid var(--accent-border);">Cerrar sesión</button>
+  </header>
+
+  <div class="admin-wrap">
+    <div class="panel">
+      <div class="panel-title">Nuevo canal</div>
+      <div class="new-channel-row">
+        <input id="newChannelName" placeholder="Nombre del canal (p.ej. un equipo)" />
+        <button type="button" id="createChannelBtn">+ Crear</button>
+      </div>
+      <div class="admin-error" id="createChannelError" hidden></div>
+    </div>
+
+    <div id="channels"></div>
+  </div>
+
+<script type="module">
+  import { escapeHtml, formatDateEs } from '../assets/app.js'
+  import {
+    requireSession, logout, getOwnedChannels, createChannel,
+    createInvite, revokeInvite, listChannelInvites, listChannelViewers, revokeAccess
+  } from '../assets/supabase.js'
+
+  const session = await requireSession()
+  if (session) {
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await logout()
+      location.href = 'login.html'
+    })
+
+    const channelsEl = document.getElementById('channels')
+
+    function inviteStatus(inv) {
+      if (inv.revoked) return { cls: 'revoked', label: 'Revocada' }
+      if (inv.redeemed_at) return { cls: 'used', label: `Usada por ${escapeHtml(inv.redeemed_by_email ?? '?')} · ${formatDateEs(inv.redeemed_at)}` }
+      if (inv.expires_at && new Date(inv.expires_at) < new Date()) return { cls: 'expired', label: 'Caducada' }
+      return { cls: 'pending', label: 'Pendiente' }
+    }
+
+    function inviteRowHtml(inv) {
+      const status = inviteStatus(inv)
+      const canRevoke = !inv.revoked && !inv.redeemed_at
+      return `
+        <div class="admin-row" data-token="${inv.token}">
+          <span class="who"><span class="status-pill ${status.cls}">${status.label}</span></span>
+          <span class="when">${formatDateEs(inv.created_at)}</span>
+          <span class="actions">
+            ${canRevoke ? `<button type="button" class="link-btn copy-invite-btn" data-token="${inv.token}">Copiar link</button>
+              <button type="button" class="link-btn danger revoke-invite-btn" data-token="${inv.token}">Revocar</button>` : ''}
+          </span>
+        </div>`
+    }
+
+    function viewerRowHtml(v) {
+      return `
+        <div class="admin-row" data-user="${v.user_id}">
+          <span class="who">${escapeHtml(v.email)}</span>
+          <span class="when">desde ${formatDateEs(v.granted_at)}</span>
+          <span class="actions">
+            <button type="button" class="link-btn danger revoke-access-btn" data-user="${v.user_id}">Quitar acceso</button>
+          </span>
+        </div>`
+    }
+
+    async function mountChannelCard(channel) {
+      const card = document.createElement('div')
+      card.className = 'panel'
+      card.dataset.channel = channel.id
+      card.innerHTML = `
+        <div class="panel-title-row">
+          <div class="panel-title">${escapeHtml(channel.name)}</div>
+          <button type="button" class="invite-create-btn" data-action="new-invite">+ Invitación</button>
+        </div>
+        <div class="invite-link-box" hidden></div>
+        <div class="admin-section">
+          <div class="admin-section-title">Con acceso</div>
+          <div class="viewers-list"><div class="admin-empty">Cargando…</div></div>
+        </div>
+        <div class="admin-section">
+          <div class="admin-section-title">Invitaciones</div>
+          <div class="invites-list"><div class="admin-empty">Cargando…</div></div>
+        </div>`
+      channelsEl.appendChild(card)
+
+      const linkBox = card.querySelector('.invite-link-box')
+      const viewersList = card.querySelector('.viewers-list')
+      const invitesList = card.querySelector('.invites-list')
+
+      async function refreshViewers() {
+        try {
+          const viewers = await listChannelViewers(channel.id)
+          viewersList.innerHTML = viewers.length
+            ? viewers.map(viewerRowHtml).join('')
+            : '<div class="admin-empty">Nadie tiene acceso todavía.</div>'
+        } catch (err) {
+          viewersList.innerHTML = `<div class="admin-error">${escapeHtml(err.message)}</div>`
+        }
+      }
+
+      async function refreshInvites() {
+        try {
+          const invites = await listChannelInvites(channel.id)
+          invitesList.innerHTML = invites.length
+            ? invites.map(inviteRowHtml).join('')
+            : '<div class="admin-empty">Ninguna invitación creada todavía.</div>'
+        } catch (err) {
+          invitesList.innerHTML = `<div class="admin-error">${escapeHtml(err.message)}</div>`
+        }
+      }
+
+      card.querySelector('[data-action="new-invite"]').addEventListener('click', async (e) => {
+        const btn = e.currentTarget
+        btn.disabled = true
+        try {
+          const token = await createInvite(channel.id)
+          const url = new URL(`invite.html?token=${token}`, location.href).href
+          linkBox.hidden = false
+          linkBox.innerHTML = `
+            <input readonly value="${escapeHtml(url)}" onfocus="this.select()" />
+            <button type="button" class="link-btn" id="copyNew">Copiar</button>`
+          linkBox.querySelector('#copyNew').addEventListener('click', async () => {
+            await navigator.clipboard.writeText(url)
+          })
+          await refreshInvites()
+        } catch (err) {
+          linkBox.hidden = false
+          linkBox.innerHTML = `<div class="admin-error">${escapeHtml(err.message)}</div>`
+        } finally {
+          btn.disabled = false
+        }
+      })
+
+      invitesList.addEventListener('click', async (e) => {
+        const copyBtn = e.target.closest('.copy-invite-btn')
+        const revokeBtn = e.target.closest('.revoke-invite-btn')
+        if (copyBtn) {
+          const url = new URL(`invite.html?token=${copyBtn.dataset.token}`, location.href).href
+          await navigator.clipboard.writeText(url)
+          copyBtn.textContent = '✓'
+          setTimeout(() => { copyBtn.textContent = 'Copiar link' }, 1500)
+        } else if (revokeBtn) {
+          if (!confirm('¿Revocar esta invitación? Dejará de poder usarse.')) return
+          revokeBtn.disabled = true
+          try {
+            await revokeInvite(revokeBtn.dataset.token)
+            await refreshInvites()
+          } catch (err) {
+            alert(err.message)
+            revokeBtn.disabled = false
+          }
+        }
+      })
+
+      viewersList.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.revoke-access-btn')
+        if (!btn) return
+        if (!confirm('¿Quitar el acceso de este usuario al canal?')) return
+        btn.disabled = true
+        try {
+          await revokeAccess(channel.id, btn.dataset.user)
+          await refreshViewers()
+        } catch (err) {
+          alert(err.message)
+          btn.disabled = false
+        }
+      })
+
+      await Promise.all([refreshViewers(), refreshInvites()])
+    }
+
+    async function renderChannels() {
+      try {
+        const channels = await getOwnedChannels()
+        channelsEl.innerHTML = ''
+        if (channels.length === 0) {
+          channelsEl.innerHTML = '<div class="empty-state">Todavía no tienes ningún canal propio. Crea uno arriba para empezar a invitar gente.</div>'
+          return
+        }
+        for (const c of channels) await mountChannelCard(c)
+      } catch (err) {
+        channelsEl.innerHTML = `<div class="empty-state">No se han podido cargar tus canales. ${escapeHtml(err.message)}</div>`
+      }
+    }
+
+    document.getElementById('createChannelBtn').addEventListener('click', async () => {
+      const input = document.getElementById('newChannelName')
+      const errorEl = document.getElementById('createChannelError')
+      const name = input.value.trim()
+      errorEl.hidden = true
+      if (!name) return
+      const btn = document.getElementById('createChannelBtn')
+      btn.disabled = true
+      try {
+        await createChannel(name)
+        input.value = ''
+        await renderChannels()
+      } catch (err) {
+        errorEl.textContent = err.message
+        errorEl.hidden = false
+      } finally {
+        btn.disabled = false
+      }
+    })
+
+    await renderChannels()
+  }
+</script>
+</body>
+</html>
