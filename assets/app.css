@@ -327,8 +327,6 @@ button { font-family: inherit; }
 }
 .video-modal-navbtn:hover:not(:disabled) { background: var(--accent-soft); }
 .video-modal-navbtn:disabled { opacity: .35; cursor: default; }
-.video-modal-openext { color: var(--accent-text); font-size: 12px; text-decoration: none; }
-.video-modal-openext:hover { text-decoration: underline; }
 .video-modal-close {
   background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer;
   padding: 4px 8px; line-height: 1; border-radius: 999px;
@@ -348,6 +346,11 @@ button { font-family: inherit; }
 .video-modal-icontoggle:disabled { opacity: .35; cursor: default; }
 .video-modal-frame { position: relative; aspect-ratio: 16 / 9; background: #000; flex-shrink: 0; }
 .video-modal-frame iframe, .video-modal-frame > div { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
+/* Vídeo propio (R2), alternativa al iframe de YouTube cuando el corte lo
+   tiene — ver openVideoModal. object-fit:contain porque, a diferencia del
+   iframe de YouTube (que ya ajusta su propio contenido), aquí es el propio
+   elemento <video> el que hay que encajar sin recortar. */
+.video-modal-frame > video { position: absolute; inset: 0; width: 100%; height: 100%; border: none; object-fit: contain; background: #000; cursor: pointer; }
 /* Más específico que la regla genérica de arriba (".video-modal-frame >
    div", pensada para el reproductor a pantalla completa) para que no se la
    lleve por delante y la deje también a pantalla completa — eso es

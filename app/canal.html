@@ -172,6 +172,7 @@
         <div class="video-modal-nav">
           <button type="button" class="video-modal-navbtn" id="videoModalPrev">◀ Anterior</button>
           <button type="button" class="video-modal-navbtn" id="videoModalReplay">↻ Volver a ver</button>
+          <button type="button" class="video-modal-navbtn" id="videoModalPlayPause" title="Pausar">⏸</button>
           <button type="button" class="video-modal-navbtn" id="videoModalNext">Siguiente ▶</button>
         </div>
         <div class="video-modal-toggles">
@@ -182,12 +183,20 @@
           <button type="button" class="video-modal-icontoggle" id="videoModalShowGoalZone"
             aria-pressed="false" title="Mostrar zona de portería sobre el vídeo">🥅</button>
         </div>
-        <a id="videoModalOpenExt" href="#" target="_blank" rel="noopener" class="video-modal-openext">Abrir en YouTube ↗</a>
         <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
       </div>
       <div class="video-modal-body" id="videoModalBody">
         <div class="video-modal-frame" id="videoModalFrame">
-          <div id="videoModalPlayer"></div>
+          <!-- Envoltorio propio porque la API de YouTube SUSTITUYE el elemento
+               #videoModalPlayer entero por un <iframe> (mismo id, nodo nuevo) en
+               cuanto se crea el reproductor — si el JS guardara una referencia a
+               #videoModalPlayer para mostrarlo/ocultarlo, a partir de ese momento
+               apuntaría a un nodo ya fuera del DOM. Ocultando este envoltorio (que
+               la API nunca toca) en vez del propio player, siempre funciona. -->
+          <div id="videoModalYtWrap">
+            <div id="videoModalPlayer"></div>
+          </div>
+          <video id="videoModalNativeVideo" playsinline hidden></video>
           <div class="video-modal-goalzone-overlay" id="videoModalGoalZoneOverlay" hidden></div>
         </div>
         <div class="video-modal-info" id="videoModalInfo"></div>
@@ -214,6 +223,13 @@
   const COL_YOUTUBE = 'ID de YouTube del vídeo'
   const COL_CLIP_START = 'Inicio del corte (segundos)'
   const COL_CLIP_END = 'Fin del corte (segundos)'
+  // Vídeo propio en Cloudflare R2 (alternativa a YouTube) — opcionales,
+  // solo rellenas si desde VideoCuts se subió el vídeo de ese rol (ver
+  // hostedVideoService.ts). Si faltan, el corte se ve por YouTube como
+  // siempre; ver openVideoModal.
+  const COL_HOSTED_URL = 'URL del vídeo propio'
+  const COL_HOSTED_START = 'Inicio del corte en el vídeo propio (segundos)'
+  const COL_HOSTED_END = 'Fin del corte en el vídeo propio (segundos)'
   const COL_GK_POSITION = 'Posición portero'
   const COL_GK_STANCE = 'Postura portero'
 
@@ -358,22 +374,41 @@
   // Cada pestaña rellena currentVideoRows con su propia tabla de detalle
   // (filtrada/ordenada a su manera) y llama a openVideoModal(record, index).
   const videoModalOverlay = document.getElementById('videoModalOverlay');
-  const videoModalOpenExt = document.getElementById('videoModalOpenExt');
   const videoModalPrev = document.getElementById('videoModalPrev');
   const videoModalNext = document.getElementById('videoModalNext');
   const videoModalReplay = document.getElementById('videoModalReplay');
+  const videoModalPlayPause = document.getElementById('videoModalPlayPause');
   const videoModalAutoAdvance = document.getElementById('videoModalAutoAdvance');
   const videoModalShowInfo = document.getElementById('videoModalShowInfo');
   const videoModalShowGoalZone = document.getElementById('videoModalShowGoalZone');
   const videoModalInfo = document.getElementById('videoModalInfo');
   const videoModalGoalZoneOverlay = document.getElementById('videoModalGoalZoneOverlay');
   const videoModalFrame = document.getElementById('videoModalFrame');
+  const videoModalYtWrap = document.getElementById('videoModalYtWrap');
+  const videoModalNativeVideo = document.getElementById('videoModalNativeVideo');
   const videoModalBody = document.getElementById('videoModalBody');
   document.getElementById('videoModalClose').addEventListener('click', closeVideoModal);
   videoModalOverlay.addEventListener('click', (e) => { if (e.target === videoModalOverlay) closeVideoModal(); });
   videoModalPrev.addEventListener('click', () => goToVideo(-1));
   videoModalNext.addEventListener('click', () => goToVideo(1));
   videoModalReplay.addEventListener('click', replayVideo);
+
+  // Icono según lo que esté haciendo el reproductor activo (nativo o
+  // YouTube) — se llama desde los listeners de #videoModalNativeVideo y
+  // desde processPlayerState (más abajo), no solo al pulsar el botón.
+  function setPlayPauseIcon(isPlaying) {
+    videoModalPlayPause.textContent = isPlaying ? '⏸' : '▶';
+    videoModalPlayPause.title = isPlaying ? 'Pausar' : 'Reproducir';
+  }
+  videoModalPlayPause.addEventListener('click', () => {
+    if (currentHostedParams) {
+      if (videoModalNativeVideo.paused) videoModalNativeVideo.play().catch(() => {});
+      else videoModalNativeVideo.pause();
+    } else if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+      if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
+      else ytPlayer.playVideo();
+    }
+  });
 
   // Resultado → clase de la pill de color: perspectiva jugador (gol/parada/
   // fuera, tres colores, igual que en los Clips) o perspectiva portero
@@ -517,6 +552,11 @@
   let pendingVideo = null;
   let currentVideoParams = null;
 
+  // Vídeo propio en R2 (alternativa a YouTube) — no-null es la señal de
+  // "el corte activo va por aquí, no por YouTube", ver más abajo
+  // (loadHostedClip, y su uso en openVideoModal/replayVideo/closeVideoModal).
+  let currentHostedParams = null;
+
   window.onYouTubeIframeAPIReady = function () {
     ytApiReady = true;
     if (fallbackMode) return; // ya se optó por el iframe simple, no cambiar a mitad de sesión
@@ -543,6 +583,9 @@
     setToggle(videoModalAutoAdvance, false);
     videoModalAutoAdvance.disabled = true;
     videoModalAutoAdvance.title = reason;
+    // El iframe suelto de reserva tampoco tiene pauseVideo/playVideo.
+    videoModalPlayPause.disabled = true;
+    videoModalPlayPause.title = reason;
   }
 
   // 3000ms era demasiado poco: en condiciones reales (compitiendo con el
@@ -638,13 +681,64 @@
   // de fiarnos de un PAUSED para decidir que se acabó.
   let clipHasStarted = false;
 
+  // ─── Vídeo propio en R2 ─────────────────────────────────────────────────
+  // Alternativa a todo lo de arriba: un <video> normal, sin API externa, sin
+  // bloqueadores que puedan cortarla, sin modo de reserva — el navegador ya
+  // sabe hacer byte-range de sobra. Reutiliza las mismas advanceFired/
+  // clipHasStarted/tryAutoAdvance que YouTube: un solo criterio de "cuándo
+  // se considera acabado un corte", sea cual sea el reproductor que lo esté
+  // sirviendo.
+  function loadHostedClip({ url, startSec, endSec }) {
+    currentHostedParams = { url, startSec, endSec };
+    const startPlayback = () => {
+      videoModalNativeVideo.currentTime = startSec;
+      videoModalNativeVideo.play().catch(() => {}); // autoplay puede fallar sin gesto previo; no es un error real
+    };
+    if (videoModalNativeVideo.src === url) {
+      startPlayback();
+    } else {
+      videoModalNativeVideo.src = url;
+      videoModalNativeVideo.addEventListener('loadedmetadata', startPlayback, { once: true });
+    }
+  }
+
+  videoModalNativeVideo.addEventListener('playing', () => { clipHasStarted = true; });
+  videoModalNativeVideo.addEventListener('play', () => setPlayPauseIcon(true));
+  videoModalNativeVideo.addEventListener('pause', () => setPlayPauseIcon(false));
+  // Clic en el propio vídeo para pausar/reanudar — YouTube ya lo trae de
+  // serie en su reproductor, aquí hay que ponerlo a mano.
+  videoModalNativeVideo.addEventListener('click', () => {
+    if (videoModalNativeVideo.paused) videoModalNativeVideo.play().catch(() => {});
+    else videoModalNativeVideo.pause();
+  });
+  videoModalNativeVideo.addEventListener('timeupdate', () => {
+    if (!currentHostedParams || !Number.isFinite(currentHostedParams.endSec)) return;
+    if (videoModalNativeVideo.currentTime >= currentHostedParams.endSec - 0.05) {
+      videoModalNativeVideo.pause();
+      tryAutoAdvance();
+    }
+  });
+  videoModalNativeVideo.addEventListener('pause', () => {
+    // Mientras está pausado no llegan más "timeupdate" (currentTime no
+    // avanza), así que el tiempo pausado nunca cuenta para el auto-avance —
+    // ni hace falta guardia aparte para eso, es como se comporta ya un
+    // <video> normal.
+    if (!currentHostedParams || !clipHasStarted) return;
+    const nearEnd = videoModalNativeVideo.currentTime >= currentHostedParams.endSec - 0.5;
+    // Igual que con YouTube: una pausa manual de verdad (no ha llegado al
+    // final del corte) desactiva el auto-avance en vez de dejarlo marcado
+    // en silencio para cuando el usuario reanude.
+    if (!nearEnd && toggleIsOn(videoModalAutoAdvance)) setToggle(videoModalAutoAdvance, false);
+  });
+
   // stateCode: mismos códigos numéricos que YT.PlayerState (1 jugando, 0
   // acabado, 2 pausado...). currentTimeHint: si ya se conoce el tiempo
   // reproducido (viene en el mensaje bruto de infoDelivery, ver más abajo),
   // se usa directamente en vez de volver a preguntarle a ytPlayer.
   function processPlayerState(stateCode, currentTimeHint) {
     if (typeof YT === 'undefined') return; // por si el mensaje bruto llegara antes de que cargue el script de la API
-    if (stateCode === YT.PlayerState.PLAYING) { clipHasStarted = true; return; }
+    if (stateCode === YT.PlayerState.PLAYING) { clipHasStarted = true; setPlayPauseIcon(true); return; }
+    if (stateCode === YT.PlayerState.PAUSED) setPlayPauseIcon(false);
     // Bug real encontrado al probarlo: loadVideoById reutiliza el mismo
     // reproductor/iframe para el siguiente corte, y un evento ENDED que en
     // realidad pertenecía al corte YA ABANDONADO puede llegar tarde, justo
@@ -702,7 +796,10 @@
   function replayVideo() {
     advanceFired = false;
     clipHasStarted = false; // igual que al cargar un corte nuevo: no fiarse de un PAUSED hasta ver un PLAYING real tras el seek
-    if (fallbackMode) {
+    if (currentHostedParams) {
+      videoModalNativeVideo.currentTime = currentHostedParams.startSec;
+      videoModalNativeVideo.play().catch(() => {});
+    } else if (fallbackMode) {
       renderFallbackIframe(currentVideoParams);
     } else if (ytPlayer) {
       ytPlayer.seekTo(currentClipStart, true);
@@ -718,6 +815,7 @@
 
   function closeVideoModal() {
     videoModalOverlay.hidden = true;
+    videoModalNativeVideo.pause();
     if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo(); // corta la reproducción al cerrar
     else if (fallbackMode) document.getElementById('videoModalPlayer').innerHTML = ''; // sin API no hay pauseVideo: se quita el iframe
   }
@@ -740,11 +838,58 @@
     advanceFired = false;
     clipHasStarted = false;
 
-    if (fallbackMode) renderFallbackIframe(currentVideoParams);
-    else if (ytApiReady) loadIntoPlayer(currentVideoParams);
-    else pendingVideo = currentVideoParams;
+    // Vídeo propio en R2 si el corte lo tiene (subido desde VideoCuts, ver
+    // hostedVideoService.ts) — YouTube si no, exactamente como siempre.
+    const hostedUrl = record[COL_HOSTED_URL];
+    const hostedStart = Number(record[COL_HOSTED_START]);
+    const hostedEnd = Number(record[COL_HOSTED_END]);
+    const isHosted = !!hostedUrl && Number.isFinite(hostedStart) && Number.isFinite(hostedEnd);
 
-    videoModalOpenExt.href = `https://www.youtube.com/watch?v=${youtubeId}&t=${startSec}s`;
+    if (isHosted) {
+      currentHostedParams = null; // se rellena de verdad dentro de loadHostedClip
+      videoModalYtWrap.hidden = true;
+      videoModalNativeVideo.hidden = false;
+      // No dejar sonando de fondo el corte anterior si venía de YouTube —
+      // por API (caso normal) o, si esta sesión entró en modo de reserva
+      // (bloqueador de anuncios), quitando directamente el iframe suelto,
+      // que no tiene pauseVideo().
+      if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+      else if (fallbackMode) document.getElementById('videoModalPlayer').innerHTML = '';
+      // El vídeo propio tiene control de pausa y de auto-avance fiable
+      // siempre, sea cual sea el estado de fallbackMode (que solo afecta a
+      // YouTube) — si una sesión anterior los dejó deshabilitados al
+      // toparse con un corte de YouTube sin API disponible, se reactivan
+      // aquí. Sin esto, activar "auto-avance" no hacía nada en un corte con
+      // vídeo propio si antes se había visto uno de YouTube en modo de
+      // reserva — mismo fallo que ya se corrigió para el botón de pausa,
+      // se me olvidó aplicarlo también aquí.
+      videoModalPlayPause.disabled = false;
+      videoModalPlayPause.title = 'Pausar';
+      videoModalAutoAdvance.disabled = false;
+      videoModalAutoAdvance.title = 'Pasar automáticamente al siguiente vídeo al terminar';
+      // Con vídeo propio ya no hay motivo para que venga desactivado — es
+      // fiable en cualquier navegador, así que cada corte con vídeo propio
+      // arranca con el auto-avance activo por defecto (aunque se hubiera
+      // desactivado antes, a mano o por un corte de YouTube previo).
+      setToggle(videoModalAutoAdvance, true);
+      loadHostedClip({ url: hostedUrl, startSec: hostedStart, endSec: hostedEnd });
+    } else {
+      currentHostedParams = null;
+      videoModalNativeVideo.hidden = true;
+      videoModalNativeVideo.pause();
+      videoModalYtWrap.hidden = false;
+      if (fallbackMode) {
+        renderFallbackIframe(currentVideoParams);
+        videoModalPlayPause.disabled = true;
+        videoModalPlayPause.title = videoModalReplay.title;
+      } else {
+        videoModalPlayPause.disabled = false;
+        videoModalPlayPause.title = 'Pausar';
+        if (ytApiReady) loadIntoPlayer(currentVideoParams);
+        else pendingVideo = currentVideoParams;
+      }
+    }
+    setPlayPauseIcon(true); // los dos reproductores arrancan en autoplay
 
     // Dos líneas en forma de frase, sin nombres de campo: la primera
     // sitúa la jugada (partido/parte/tiempo/puesto/fase de juego), la
