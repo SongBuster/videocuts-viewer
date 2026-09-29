@@ -855,11 +855,18 @@
       // que no tiene pauseVideo().
       if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
       else if (fallbackMode) document.getElementById('videoModalPlayer').innerHTML = '';
-      // El vídeo propio tiene control de pausa siempre, sea cual sea el
-      // estado de fallbackMode (que solo afecta a YouTube) — si una sesión
-      // anterior lo dejó deshabilitado, se reactiva aquí.
+      // El vídeo propio tiene control de pausa y de auto-avance fiable
+      // siempre, sea cual sea el estado de fallbackMode (que solo afecta a
+      // YouTube) — si una sesión anterior los dejó deshabilitados al
+      // toparse con un corte de YouTube sin API disponible, se reactivan
+      // aquí. Sin esto, activar "auto-avance" no hacía nada en un corte con
+      // vídeo propio si antes se había visto uno de YouTube en modo de
+      // reserva — mismo fallo que ya se corrigió para el botón de pausa,
+      // se me olvidó aplicarlo también aquí.
       videoModalPlayPause.disabled = false;
       videoModalPlayPause.title = 'Pausar';
+      videoModalAutoAdvance.disabled = false;
+      videoModalAutoAdvance.title = 'Pasar automáticamente al siguiente vídeo al terminar';
       loadHostedClip({ url: hostedUrl, startSec: hostedStart, endSec: hostedEnd });
     } else {
       currentHostedParams = null;
