@@ -93,7 +93,8 @@
   import { escapeHtml, formatDateEs } from '../assets/app.js'
   import {
     requireSession, logout, getOwnedChannels, createChannel, deleteChannel,
-    createInvite, revokeInvite, listChannelInvites, listChannelViewers, revokeAccess
+    createInvite, revokeInvite, listChannelInvites, listChannelViewers, revokeAccess,
+    listChannelDatasets, deleteJornada
   } from '../assets/supabase.js'
 
   const session = await requireSession()
@@ -126,6 +127,39 @@
         </div>`
     }
 
+    // Agrupa las filas planas de datasets (una por modo) en una por
+    // equipo+jornada, que es la unidad que el usuario entiende como "un
+    // partido publicado" y quiere poder borrar de una vez.
+    function groupDatasets(rows) {
+      const map = new Map()
+      for (const r of rows) {
+        const key = `${r.team}::${r.code}`
+        let g = map.get(key)
+        if (!g) {
+          g = { team: r.team, code: r.code, modes: [], totalRecords: 0, generatedAt: r.generated_at }
+          map.set(key, g)
+        }
+        g.modes.push(r.mode)
+        g.totalRecords += Array.isArray(r.records) ? r.records.length : 0
+        if (new Date(r.generated_at) > new Date(g.generatedAt)) g.generatedAt = r.generated_at
+      }
+      return [...map.values()].sort((a, b) => a.team.localeCompare(b.team) || a.code.localeCompare(b.code))
+    }
+
+    function datasetRowHtml(g) {
+      return `
+        <div class="admin-row" data-team="${escapeHtml(g.team)}" data-code="${escapeHtml(g.code)}">
+          <span class="who">
+            ${escapeHtml(g.team)} · ${escapeHtml(g.code)}
+            <span style="color:#666;">(${g.modes.join(' + ')}, ${g.totalRecords} filas)</span>
+          </span>
+          <span class="when">${formatDateEs(g.generatedAt)}</span>
+          <span class="actions">
+            <button type="button" class="link-btn danger delete-dataset-btn" data-team="${escapeHtml(g.team)}" data-code="${escapeHtml(g.code)}">Borrar jornada</button>
+          </span>
+        </div>`
+    }
+
     function viewerRowHtml(v) {
       return `
         <div class="admin-row" data-user="${v.user_id}">
@@ -148,6 +182,10 @@
         </div>
         <div class="invite-link-box" hidden></div>
         <div class="admin-section">
+          <div class="admin-section-title">Jornadas publicadas</div>
+          <div class="datasets-list"><div class="admin-empty">Cargando…</div></div>
+        </div>
+        <div class="admin-section">
           <div class="admin-section-title">Con acceso</div>
           <div class="viewers-list"><div class="admin-empty">Cargando…</div></div>
         </div>
@@ -163,6 +201,18 @@
       const linkBox = card.querySelector('.invite-link-box')
       const viewersList = card.querySelector('.viewers-list')
       const invitesList = card.querySelector('.invites-list')
+      const datasetsList = card.querySelector('.datasets-list')
+
+      async function refreshDatasets() {
+        try {
+          const groups = groupDatasets(await listChannelDatasets(channel.id))
+          datasetsList.innerHTML = groups.length
+            ? groups.map(datasetRowHtml).join('')
+            : '<div class="admin-empty">Nada publicado todavía en este canal.</div>'
+        } catch (err) {
+          datasetsList.innerHTML = `<div class="admin-error">${escapeHtml(err.message)}</div>`
+        }
+      }
 
       async function refreshViewers() {
         try {
@@ -229,6 +279,21 @@
         }
       })
 
+      datasetsList.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.delete-dataset-btn')
+        if (!btn) return
+        const { team, code } = btn.dataset
+        if (!confirm(`¿Borrar "${team} · ${code}" de este canal? Se borran sus datos (jugadores y portero) para siempre. No se puede deshacer.`)) return
+        btn.disabled = true
+        try {
+          await deleteJornada(channel.id, team, code)
+          await refreshDatasets()
+        } catch (err) {
+          alert(err.message)
+          btn.disabled = false
+        }
+      })
+
       viewersList.addEventListener('click', async (e) => {
         const btn = e.target.closest('.revoke-access-btn')
         if (!btn) return
@@ -263,7 +328,7 @@
         }
       })
 
-      await Promise.all([refreshViewers(), refreshInvites()])
+      await Promise.all([refreshDatasets(), refreshViewers(), refreshInvites()])
     }
 
     async function renderChannels() {

@@ -184,3 +184,29 @@ export async function deleteChannel(channelId) {
   const { error } = await supabase.from('channels').delete().eq('id', channelId)
   if (error) throw new Error(error.message)
 }
+
+// Datasets publicados en un canal (uno por equipo+jornada+modo — jugadores
+// y portero del mismo partido son dos filas distintas, ver datasetRowId en
+// supabaseService.ts). Ya cubierto por la política de RLS del dueño
+// (datasets_write_own_channel es "for all", incluye select y delete), sin
+// necesidad de una función aparte.
+export async function listChannelDatasets(channelId) {
+  const { data, error } = await supabase
+    .from('datasets')
+    .select('team, code, mode, records, generated_at')
+    .eq('channel_id', channelId)
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
+
+// Borra TODAS las filas (jugadores + portero) de un equipo+jornada concreto
+// dentro de un canal — "una jornada suelta", no el canal entero.
+export async function deleteJornada(channelId, team, code) {
+  const { error } = await supabase
+    .from('datasets')
+    .delete()
+    .eq('channel_id', channelId)
+    .eq('team', team)
+    .eq('code', code)
+  if (error) throw new Error(error.message)
+}
