@@ -867,6 +867,11 @@
       videoModalPlayPause.title = 'Pausar';
       videoModalAutoAdvance.disabled = false;
       videoModalAutoAdvance.title = 'Pasar automáticamente al siguiente vídeo al terminar';
+      // Con vídeo propio ya no hay motivo para que venga desactivado — es
+      // fiable en cualquier navegador, así que cada corte con vídeo propio
+      // arranca con el auto-avance activo por defecto (aunque se hubiera
+      // desactivado antes, a mano o por un corte de YouTube previo).
+      setToggle(videoModalAutoAdvance, true);
       loadHostedClip({ url: hostedUrl, startSec: hostedStart, endSec: hostedEnd });
     } else {
       currentHostedParams = null;
