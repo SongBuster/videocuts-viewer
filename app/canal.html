@@ -172,6 +172,7 @@
         <div class="video-modal-nav">
           <button type="button" class="video-modal-navbtn" id="videoModalPrev">◀ Anterior</button>
           <button type="button" class="video-modal-navbtn" id="videoModalReplay">↻ Volver a ver</button>
+          <button type="button" class="video-modal-navbtn" id="videoModalPlayPause" title="Pausar">⏸</button>
           <button type="button" class="video-modal-navbtn" id="videoModalNext">Siguiente ▶</button>
         </div>
         <div class="video-modal-toggles">
@@ -182,7 +183,6 @@
           <button type="button" class="video-modal-icontoggle" id="videoModalShowGoalZone"
             aria-pressed="false" title="Mostrar zona de portería sobre el vídeo">🥅</button>
         </div>
-        <a id="videoModalOpenExt" href="#" target="_blank" rel="noopener" class="video-modal-openext">Abrir en YouTube ↗</a>
         <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
       </div>
       <div class="video-modal-body" id="videoModalBody">
@@ -374,10 +374,10 @@
   // Cada pestaña rellena currentVideoRows con su propia tabla de detalle
   // (filtrada/ordenada a su manera) y llama a openVideoModal(record, index).
   const videoModalOverlay = document.getElementById('videoModalOverlay');
-  const videoModalOpenExt = document.getElementById('videoModalOpenExt');
   const videoModalPrev = document.getElementById('videoModalPrev');
   const videoModalNext = document.getElementById('videoModalNext');
   const videoModalReplay = document.getElementById('videoModalReplay');
+  const videoModalPlayPause = document.getElementById('videoModalPlayPause');
   const videoModalAutoAdvance = document.getElementById('videoModalAutoAdvance');
   const videoModalShowInfo = document.getElementById('videoModalShowInfo');
   const videoModalShowGoalZone = document.getElementById('videoModalShowGoalZone');
@@ -392,6 +392,23 @@
   videoModalPrev.addEventListener('click', () => goToVideo(-1));
   videoModalNext.addEventListener('click', () => goToVideo(1));
   videoModalReplay.addEventListener('click', replayVideo);
+
+  // Icono según lo que esté haciendo el reproductor activo (nativo o
+  // YouTube) — se llama desde los listeners de #videoModalNativeVideo y
+  // desde processPlayerState (más abajo), no solo al pulsar el botón.
+  function setPlayPauseIcon(isPlaying) {
+    videoModalPlayPause.textContent = isPlaying ? '⏸' : '▶';
+    videoModalPlayPause.title = isPlaying ? 'Pausar' : 'Reproducir';
+  }
+  videoModalPlayPause.addEventListener('click', () => {
+    if (currentHostedParams) {
+      if (videoModalNativeVideo.paused) videoModalNativeVideo.play().catch(() => {});
+      else videoModalNativeVideo.pause();
+    } else if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
+      if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
+      else ytPlayer.playVideo();
+    }
+  });
 
   // Resultado → clase de la pill de color: perspectiva jugador (gol/parada/
   // fuera, tres colores, igual que en los Clips) o perspectiva portero
@@ -566,6 +583,9 @@
     setToggle(videoModalAutoAdvance, false);
     videoModalAutoAdvance.disabled = true;
     videoModalAutoAdvance.title = reason;
+    // El iframe suelto de reserva tampoco tiene pauseVideo/playVideo.
+    videoModalPlayPause.disabled = true;
+    videoModalPlayPause.title = reason;
   }
 
   // 3000ms era demasiado poco: en condiciones reales (compitiendo con el
@@ -683,6 +703,14 @@
   }
 
   videoModalNativeVideo.addEventListener('playing', () => { clipHasStarted = true; });
+  videoModalNativeVideo.addEventListener('play', () => setPlayPauseIcon(true));
+  videoModalNativeVideo.addEventListener('pause', () => setPlayPauseIcon(false));
+  // Clic en el propio vídeo para pausar/reanudar — YouTube ya lo trae de
+  // serie en su reproductor, aquí hay que ponerlo a mano.
+  videoModalNativeVideo.addEventListener('click', () => {
+    if (videoModalNativeVideo.paused) videoModalNativeVideo.play().catch(() => {});
+    else videoModalNativeVideo.pause();
+  });
   videoModalNativeVideo.addEventListener('timeupdate', () => {
     if (!currentHostedParams || !Number.isFinite(currentHostedParams.endSec)) return;
     if (videoModalNativeVideo.currentTime >= currentHostedParams.endSec - 0.05) {
@@ -691,6 +719,10 @@
     }
   });
   videoModalNativeVideo.addEventListener('pause', () => {
+    // Mientras está pausado no llegan más "timeupdate" (currentTime no
+    // avanza), así que el tiempo pausado nunca cuenta para el auto-avance —
+    // ni hace falta guardia aparte para eso, es como se comporta ya un
+    // <video> normal.
     if (!currentHostedParams || !clipHasStarted) return;
     const nearEnd = videoModalNativeVideo.currentTime >= currentHostedParams.endSec - 0.5;
     // Igual que con YouTube: una pausa manual de verdad (no ha llegado al
@@ -705,7 +737,8 @@
   // se usa directamente en vez de volver a preguntarle a ytPlayer.
   function processPlayerState(stateCode, currentTimeHint) {
     if (typeof YT === 'undefined') return; // por si el mensaje bruto llegara antes de que cargue el script de la API
-    if (stateCode === YT.PlayerState.PLAYING) { clipHasStarted = true; return; }
+    if (stateCode === YT.PlayerState.PLAYING) { clipHasStarted = true; setPlayPauseIcon(true); return; }
+    if (stateCode === YT.PlayerState.PAUSED) setPlayPauseIcon(false);
     // Bug real encontrado al probarlo: loadVideoById reutiliza el mismo
     // reproductor/iframe para el siguiente corte, y un evento ENDED que en
     // realidad pertenecía al corte YA ABANDONADO puede llegar tarde, justo
@@ -822,21 +855,29 @@
       // que no tiene pauseVideo().
       if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
       else if (fallbackMode) document.getElementById('videoModalPlayer').innerHTML = '';
+      // El vídeo propio tiene control de pausa siempre, sea cual sea el
+      // estado de fallbackMode (que solo afecta a YouTube) — si una sesión
+      // anterior lo dejó deshabilitado, se reactiva aquí.
+      videoModalPlayPause.disabled = false;
+      videoModalPlayPause.title = 'Pausar';
       loadHostedClip({ url: hostedUrl, startSec: hostedStart, endSec: hostedEnd });
     } else {
       currentHostedParams = null;
       videoModalNativeVideo.hidden = true;
       videoModalNativeVideo.pause();
       videoModalYtWrap.hidden = false;
-      if (fallbackMode) renderFallbackIframe(currentVideoParams);
-      else if (ytApiReady) loadIntoPlayer(currentVideoParams);
-      else pendingVideo = currentVideoParams;
+      if (fallbackMode) {
+        renderFallbackIframe(currentVideoParams);
+        videoModalPlayPause.disabled = true;
+        videoModalPlayPause.title = videoModalReplay.title;
+      } else {
+        videoModalPlayPause.disabled = false;
+        videoModalPlayPause.title = 'Pausar';
+        if (ytApiReady) loadIntoPlayer(currentVideoParams);
+        else pendingVideo = currentVideoParams;
+      }
     }
-
-    // El enlace a YouTube se deja siempre activo (el dato sigue siendo
-    // válido aunque este corte se esté viendo con el vídeo propio) — por si
-    // se quiere comprobar la jugada contra la emisión completa original.
-    videoModalOpenExt.href = `https://www.youtube.com/watch?v=${youtubeId}&t=${startSec}s`;
+    setPlayPauseIcon(true); // los dos reproductores arrancan en autoplay
 
     // Dos líneas en forma de frase, sin nombres de campo: la primera
     // sitúa la jugada (partido/parte/tiempo/puesto/fase de juego), la
