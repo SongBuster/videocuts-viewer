@@ -86,15 +86,73 @@ export async function getAccessibleTeams() {
 // Todas las filas de un equipo dentro de un canal, para un modo dado
 // (jugadores/portero) — puede haber varias jornadas (varios "code"), se
 // agregan igual que antes hacía Promise.all + flatMap sobre varios ficheros.
+// Cada fila lleva además "_datasetId" (el id de su partido/jornada, mismo
+// id que la fila de "datasets") — no es una columna publicada, es solo para
+// poder pedir luego las opciones de corrección de ESE partido en concreto
+// (ver fetchFieldOptions): dos partidos del mismo canal pueden llevar
+// plantillas distintas, así que sus opciones no tienen por qué coincidir.
 export async function fetchTeamRecords(channelId, team, mode) {
   const { data, error } = await supabase
     .from('datasets')
-    .select('records')
+    .select('id, records')
     .eq('channel_id', channelId)
     .eq('team', team)
     .eq('mode', mode)
   if (error) throw new Error(error.message)
-  return (data ?? []).flatMap((d) => d.records)
+  return (data ?? []).flatMap((d) => d.records.map((r) => ({ ...r, _datasetId: d.id })))
+}
+
+// ─── Corrección de jugadas desde el viewer ─────────────────────────────────
+// Ver fix_003_event_corrections.sql / fix_004_field_options_per_dataset.sql
+// en el repo "videocuts" (la app de escritorio) para el esquema completo.
+
+// Opciones válidas por campo para UN partido (no para todo el canal — cada
+// partido puede llevar una plantilla distinta). {} si todavía no se ha
+// publicado nada desde una versión de VideoCuts que mande este catálogo.
+export async function fetchFieldOptions(datasetId) {
+  const { data, error } = await supabase
+    .from('dataset_field_options')
+    .select('field_options')
+    .eq('dataset_id', datasetId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data?.field_options ?? {}
+}
+
+// Todas las correcciones ya guardadas para un canal+rol — se piden de golpe
+// al cargar la pestaña (no una por jugada) y se superponen en memoria sobre
+// los registros publicados, para que listados/filtros/estadísticas usen ya
+// el valor corregido sin más cambios en el resto del código.
+export async function fetchCorrections(channelId, role) {
+  const { data, error } = await supabase
+    .from('event_corrections')
+    .select('event_id, field, old_value, new_value')
+    .eq('channel_id', channelId)
+    .eq('role', role)
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
+
+// Guarda varias correcciones de una jugada de golpe (una fila por campo
+// cambiado). Upsert por (channel_id, event_id, field): corregir el mismo
+// campo dos veces actualiza la fila en vez de duplicarla.
+export async function saveCorrections(channelId, eventId, role, changes) {
+  const session = await getSession()
+  if (!session) throw new Error('Inicia sesión para poder corregir una jugada.')
+  if (changes.length === 0) return
+  const rows = changes.map((c) => ({
+    channel_id: channelId,
+    event_id: eventId,
+    role,
+    field: c.field,
+    old_value: c.oldValue ?? null,
+    new_value: c.newValue,
+    corrected_by: session.user.id
+  }))
+  const { error } = await supabase
+    .from('event_corrections')
+    .upsert(rows, { onConflict: 'channel_id,event_id,field' })
+  if (error) throw new Error(error.message)
 }
 
 export async function getChannelName(channelId) {
