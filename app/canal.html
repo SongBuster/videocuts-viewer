@@ -148,6 +148,49 @@
 
   .table-toggle { background: none; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 2px 0; font-family: inherit; font-weight: 600; }
   .table-wrap { margin-top: 12px; }
+
+  /* ── Modal de corrección de una jugada ── */
+  .correct-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 200;
+    display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;
+  }
+  .correct-modal-overlay[hidden] { display: none; }
+  .correct-modal {
+    width: 100%; max-width: 520px; max-height: 100%; overflow-y: auto;
+    background: var(--surface); border-radius: 10px; padding: 18px 20px 20px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .correct-modal-header { display: flex; align-items: center; justify-content: space-between; }
+  .correct-modal-header h2 { font-size: 16px; }
+  .correct-modal-hint { color: var(--text-muted); font-size: 12px; line-height: 1.5; margin: 0; }
+  .correct-modal-fields { display: flex; flex-direction: column; gap: 12px; }
+  .correct-field-row { display: flex; gap: 12px; }
+  .correct-field-row .correct-field { flex: 1; min-width: 0; }
+  @media (max-width: 480px) { .correct-field-row { flex-direction: column; gap: 12px; } }
+  .correct-field label {
+    display: block; color: var(--text-secondary); font-size: 11.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .03em; margin-bottom: 5px;
+  }
+  .correct-field select, .correct-field input[type=text] {
+    width: 100%; box-sizing: border-box; background: var(--surface-alt); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text-primary); font-size: 13px; padding: 7px 9px; font-family: inherit;
+  }
+  .correct-field select:focus, .correct-field input[type=text]:focus { outline: none; border-color: var(--accent); }
+  .correct-field input[type=text] { margin-top: 6px; }
+  .correct-field.is-changed label { color: var(--accent-text); }
+  .correct-modal-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+  .correct-modal-feedback { flex: 1; font-size: 12px; color: #4fd37a; }
+  .correct-modal-feedback.is-error { color: #f27a7a; }
+  .correct-modal-save {
+    background: var(--accent); color: #17141f; border: none; border-radius: 6px;
+    padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .correct-modal-save:disabled { opacity: .5; cursor: default; }
+  .corrected-badge {
+    display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--accent-text); background: var(--accent-soft); border: 1px solid var(--accent-border);
+    border-radius: 999px; padding: 1px 7px; margin-left: 6px; vertical-align: middle;
+  }
 </style>
 </head>
 <body>
@@ -182,6 +225,8 @@
             aria-pressed="false" title="Mostrar información del lanzamiento">ℹ️</button>
           <button type="button" class="video-modal-icontoggle" id="videoModalShowGoalZone"
             aria-pressed="false" title="Mostrar zona de portería sobre el vídeo">🥅</button>
+          <button type="button" class="video-modal-icontoggle" id="videoModalCorrect"
+            title="Corregir los datos de esta jugada">✎</button>
         </div>
         <button type="button" class="video-modal-close" id="videoModalClose">✕</button>
       </div>
@@ -204,6 +249,28 @@
     </div>
   </div>
 
+  <!-- Modal de corrección de una jugada — por encima del modal de vídeo
+       (z-index más alto), se rellena entero por JS (ver openCorrectModal). -->
+  <div class="correct-modal-overlay" id="correctModalOverlay" hidden>
+    <div class="correct-modal">
+      <div class="correct-modal-header">
+        <h2>Corregir jugada</h2>
+        <button type="button" class="video-modal-close" id="correctModalClose">✕</button>
+      </div>
+      <p class="correct-modal-hint">
+        Esto no cambia el vídeo ni lo publicado desde VideoCuts — guarda tu corrección aparte, y se
+        muestra en lugar del valor original. Quien gestiona el canal verá un aviso si vuelve a publicar
+        este partido, por si hay que tenerlo en cuenta.
+      </p>
+      <div class="correct-modal-fields" id="correctModalFields"></div>
+      <div class="correct-modal-footer">
+        <span class="correct-modal-feedback" id="correctModalFeedback"></span>
+        <button type="button" class="video-modal-navbtn" id="correctModalCancel">Cancelar</button>
+        <button type="button" class="correct-modal-save" id="correctModalSave">Guardar correcciones</button>
+      </div>
+    </div>
+  </div>
+
   <!-- API de YouTube: permite controlar el reproductor del modal de vídeo
        (volver a ver, avanzar al siguiente corte al terminar el actual) sin
        depender solo de los parámetros de la URL del iframe. -->
@@ -213,7 +280,7 @@
   import { escapeHtml } from '../assets/app.js'
   import { createDropdownFilter, createTreeDropdownFilter, buildTimeTree, computeTimeBucketKey } from '../assets/dropdown-filter.js'
   import { SHOT_ZONES, COURT_W, COURT_H, GOAL_INNER_ZONES, GOAL_LABELS, GOAL_LAYOUT } from '../assets/zones.js'
-  import { requireSession, fetchTeamRecords, getChannelName } from '../assets/supabase.js'
+  import { requireSession, fetchTeamRecords, getChannelName, fetchFieldOptions, fetchCorrections, saveCorrections } from '../assets/supabase.js'
 
   const COL_PLAYER = 'Jugador'
   const COL_CODE = 'Codigo'
@@ -232,6 +299,65 @@
   const COL_HOSTED_END = 'Fin del corte en el vídeo propio (segundos)'
   const COL_GK_POSITION = 'Posición portero'
   const COL_GK_STANCE = 'Postura portero'
+  const COL_EVENT_ID = 'ID del corte (técnico)'
+
+  // Columnas técnicas/identificadoras: no tiene sentido "corregirlas" desde
+  // el viewer (son ids, o ya se corrigen indirectamente cambiando otra
+  // cosa) — se excluyen del formulario de corrección (ver openCorrectModal).
+  // "Equipo" también: esta página ya está fija a un equipo (?equipo= en la
+  // URL), no se puede cambiar desde aquí.
+  const CORRECTION_EXCLUDED_FIELDS = new Set([
+    COL_CODE, COL_EVENT_ID, 'ID del partido (técnico)', 'Equipo',
+    COL_YOUTUBE, COL_CLIP_START, COL_CLIP_END,
+    COL_HOSTED_URL, COL_HOSTED_START, COL_HOSTED_END
+  ])
+
+  // Orden/agrupación del formulario de corrección — no el orden en que
+  // vienen las columnas del CSV, que no es el más natural para leerlo aquí
+  // (p.ej. "Parte" y "Tiempo de partido" van juntos, "Jugador" y "Puesto"
+  // también). Cada fila puede llevar uno o dos campos (se ven en la misma
+  // línea). Un campo que no aparezca aquí (de una plantilla nueva, p.ej.)
+  // simplemente se añade al final, en vez de desaparecer.
+  const CORRECTION_FIELD_LAYOUT = [
+    ['Tipo de evento'],
+    ['Parte', 'Tiempo de partido'],
+    [COL_PLAYER, COL_PUESTO],
+    ['Resultado'],
+    [COL_POSITION, COL_GOAL],
+    ['Mano', 'Tipo de lanzamiento'],
+    ['Fase de juego'],
+    ['Con amago'],
+    [COL_GK_POSITION, 'Lanzamiento 7M'],
+    ['Contraataque', COL_GK_STANCE]
+  ]
+
+  // Pide las correcciones ya guardadas de un canal+rol y las superpone en
+  // memoria sobre los registros publicados (mutando cada fila in-place, así
+  // que también lo ven filtros/estadísticas/listados, no solo el modal de
+  // vídeo) — "_corrected" marca qué campos tiene corregidos esa fila, para
+  // poder mostrar el aviso visual (ver openVideoModal/videoModalInfo).
+  async function applyCorrections(records, channelId, role) {
+    if (records.length === 0) return
+    let corrections
+    try {
+      corrections = await fetchCorrections(channelId, role)
+    } catch {
+      return // no bloquea la carga de la pestaña si esto falla
+    }
+    if (corrections.length === 0) return
+    const byEvent = new Map()
+    for (const c of corrections) {
+      if (!byEvent.has(c.event_id)) byEvent.set(c.event_id, {})
+      byEvent.get(c.event_id)[c.field] = c.new_value
+    }
+    for (const r of records) {
+      const fixes = byEvent.get(r[COL_EVENT_ID])
+      if (fixes) {
+        Object.assign(r, fixes)
+        r._corrected = new Set(Object.keys(fixes))
+      }
+    }
+  }
 
   // Mismos códigos y orden que en VideoCuts (shared/types.ts): de un extremo
   // al otro de la pista, con portero y pivote en medio. No incluye DF
@@ -407,6 +533,209 @@
     } else if (ytPlayer && typeof ytPlayer.getPlayerState === 'function') {
       if (ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
       else ytPlayer.playVideo();
+    }
+  });
+
+  // ── Corrección de una jugada (ver fix_003/fix_004 en el repo "videocuts")
+  // No toca lo publicado desde VideoCuts: guarda la corrección aparte y se
+  // superpone en memoria (ver applyCorrections) — si vuelven a publicar ese
+  // partido, VideoCuts avisará de que hay correcciones que se perderían.
+  const videoModalCorrect = document.getElementById('videoModalCorrect');
+  const correctModalOverlay = document.getElementById('correctModalOverlay');
+  const correctModalFields = document.getElementById('correctModalFields');
+  const correctModalFeedback = document.getElementById('correctModalFeedback');
+  const correctModalSave = document.getElementById('correctModalSave');
+  const OTHER_OPTION = '__otro__';
+  let correctModalRecord = null;
+  let correctModalRole = null;
+  // renderStats()/renderGkStats() recalculan TODO (KPIs, mapas de zona,
+  // comparativa, clips, tabla) a partir de "records"/"gkRecords" y los
+  // filtros activos — son funciones locales a cada pestaña (dentro de su
+  // propio "if (records.length === 0) {...} else {...}"), así que no se
+  // pueden llamar desde aquí directamente. Cada pestaña se apunta sola aquí
+  // en cuanto se monta, para que guardar una corrección pueda refrescar la
+  // que esté activa sin perder los filtros aplicados ni recargar la página.
+  const tabRefreshers = { jugadores: null, portero: null };
+
+  // Catálogo de opciones por partido (ver dataset_field_options) — se pide
+  // una sola vez por partido y se reutiliza mientras dure la sesión en esta
+  // página, no hace falta volver a pedirlo cada vez que se abre el modal.
+  const fieldOptionsCache = new Map();
+  // { values: { campo: [opciones] }, fieldsByEventType: { tipoDeEvento: [campos] } }
+  // — "values" valía por sí solo ANTES de que VideoCuts mandara
+  // fieldsByEventType (compat: datos publicados con esa versión anterior
+  // traían el mapa de valores directamente, sin envoltorio).
+  async function getFieldOptionsFor(datasetId) {
+    if (!datasetId) return { values: {}, fieldsByEventType: {} };
+    if (fieldOptionsCache.has(datasetId)) return fieldOptionsCache.get(datasetId);
+    let raw = {};
+    try {
+      raw = await fetchFieldOptions(datasetId);
+    } catch {
+      // sin catálogo no pasa nada: todos los campos caen a texto libre
+    }
+    const result = {
+      values: raw.values || raw || {},
+      fieldsByEventType: raw.fieldsByEventType || null
+    };
+    fieldOptionsCache.set(datasetId, result);
+    return result;
+  }
+
+  // Un campo del formulario: desplegable con las opciones conocidas (+
+  // "Otros" con texto libre) si las hay, o directamente texto libre si no
+  // hay catálogo para ese campo todavía (plantilla antigua, o publicado
+  // antes de que VideoCuts mandara esto). El desplegable arranca ya en
+  // "Otros" con el valor actual relleno si ese valor no está en la lista,
+  // para no perder de vista lo que había.
+  function buildFieldRow(field, currentValue, options) {
+    const wrap = document.createElement('div');
+    wrap.className = 'correct-field';
+    wrap.dataset.field = field;
+    const label = document.createElement('label');
+    label.textContent = field;
+    wrap.appendChild(label);
+
+    if (Array.isArray(options) && options.length > 0) {
+      const select = document.createElement('select');
+      for (const opt of options) {
+        const o = document.createElement('option');
+        o.value = opt; o.textContent = opt;
+        select.appendChild(o);
+      }
+      const otherOpt = document.createElement('option');
+      otherOpt.value = OTHER_OPTION;
+      otherOpt.textContent = 'Otros (especificar)…';
+      select.appendChild(otherOpt);
+
+      const textInput = document.createElement('input');
+      textInput.type = 'text';
+      textInput.placeholder = 'Nuevo valor';
+
+      const matches = options.includes(currentValue);
+      select.value = matches ? currentValue : OTHER_OPTION;
+      textInput.hidden = matches;
+      textInput.value = matches ? '' : (currentValue || '');
+
+      select.addEventListener('change', () => {
+        textInput.hidden = select.value !== OTHER_OPTION;
+        if (select.value === OTHER_OPTION) textInput.focus();
+      });
+
+      wrap.appendChild(select);
+      wrap.appendChild(textInput);
+      wrap._getValue = () => (select.value === OTHER_OPTION ? textInput.value.trim() : select.value);
+    } else {
+      const textInput = document.createElement('input');
+      textInput.type = 'text';
+      textInput.value = currentValue || '';
+      wrap.appendChild(textInput);
+      wrap._getValue = () => textInput.value.trim();
+    }
+
+    wrap._originalValue = currentValue || '';
+    return wrap;
+  }
+
+  async function openCorrectModal() {
+    const record = currentVideoRows[currentVideoIndex];
+    if (!record) return;
+    correctModalRecord = record;
+    correctModalRole = (record[COL_PUESTO] === 'Portero' || Boolean(record[COL_GK_POSITION])) ? 'portero' : 'jugadores';
+
+    correctModalFeedback.textContent = '';
+    correctModalFeedback.className = 'correct-modal-feedback';
+    correctModalFields.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">Cargando opciones…</div>';
+    correctModalOverlay.hidden = false;
+
+    const { values: fieldValues, fieldsByEventType } = await getFieldOptionsFor(record._datasetId);
+    correctModalFields.innerHTML = '';
+
+    // Qué campos se ofrecen para corregir en ESTA jugada:
+    // - Si VideoCuts mandó fieldsByEventType (publicado con una versión
+    //   reciente) y sabemos el tipo de evento de esta jugada, se usa esa
+    //   lista tal cual — así un campo que debería tener valor para ese tipo
+    //   de evento se ofrece aunque esté vacío (se olvidó rellenarlo), pero
+    //   uno que no aplica a ese tipo (p.ej. "Con amago" fuera de 7 metros)
+    //   no se ofrece aunque por lo que sea tuviera algo.
+    // - Si no (partido publicado antes de este cambio, o sin "Tipo de
+    //   evento" en el registro), se cae al criterio anterior: ofrecer solo
+    //   los campos que ya tienen algún valor.
+    const eventTypeName = record['Tipo de evento'];
+    const applicableFields = (fieldsByEventType && eventTypeName) ? fieldsByEventType[eventTypeName] : null;
+
+    const correctable = new Set(
+      Object.keys(record).filter((f) => {
+        if (f.startsWith('_') || CORRECTION_EXCLUDED_FIELDS.has(f)) return false
+        return applicableFields ? applicableFields.includes(f) : !!record[f]
+      })
+    );
+
+    for (const rowFields of CORRECTION_FIELD_LAYOUT) {
+      const present = rowFields.filter((f) => correctable.has(f));
+      if (present.length === 0) continue;
+      const row = document.createElement('div');
+      row.className = 'correct-field-row';
+      for (const field of present) {
+        row.appendChild(buildFieldRow(field, record[field], fieldValues[field]));
+        correctable.delete(field);
+      }
+      correctModalFields.appendChild(row);
+    }
+    // Cualquier campo con valor que no estuviera previsto en el orden de
+    // arriba (plantilla nueva, p.ej.) se añade igual al final, uno por fila.
+    for (const field of correctable) {
+      const row = document.createElement('div');
+      row.className = 'correct-field-row';
+      row.appendChild(buildFieldRow(field, record[field], fieldValues[field]));
+      correctModalFields.appendChild(row);
+    }
+
+    if (correctModalFields.children.length === 0) {
+      correctModalFields.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">No hay ningún campo con valor que corregir en esta jugada.</div>';
+    }
+  }
+
+  function closeCorrectModal() {
+    correctModalOverlay.hidden = true;
+  }
+
+  videoModalCorrect.addEventListener('click', openCorrectModal);
+  document.getElementById('correctModalClose').addEventListener('click', closeCorrectModal);
+  document.getElementById('correctModalCancel').addEventListener('click', closeCorrectModal);
+  correctModalOverlay.addEventListener('click', (e) => { if (e.target === correctModalOverlay) closeCorrectModal(); });
+
+  correctModalSave.addEventListener('click', async () => {
+    const record = correctModalRecord;
+    if (!record) return;
+    const changes = [];
+    for (const wrap of correctModalFields.querySelectorAll('.correct-field')) {
+      const field = wrap.dataset.field;
+      const newValue = wrap._getValue();
+      if (newValue && newValue !== wrap._originalValue) changes.push({ field, oldValue: wrap._originalValue, newValue });
+    }
+    if (changes.length === 0) {
+      correctModalFeedback.textContent = 'No has cambiado nada.';
+      correctModalFeedback.className = 'correct-modal-feedback';
+      return;
+    }
+    correctModalSave.disabled = true;
+    correctModalFeedback.textContent = 'Guardando…';
+    correctModalFeedback.className = 'correct-modal-feedback';
+    try {
+      await saveCorrections(channelId, record[COL_EVENT_ID], correctModalRole, changes);
+      const correctedFields = new Set(record._corrected || []);
+      for (const c of changes) { record[c.field] = c.newValue; correctedFields.add(c.field); }
+      record._corrected = correctedFields;
+      renderVideoModalInfo(record); // refresca la info del modal de vídeo sin reiniciar el vídeo
+      tabRefreshers[correctModalRole]?.(); // y los mapas/estadísticas/clips de la pestaña, con los filtros tal como estaban
+      correctModalFeedback.textContent = 'Guardado.';
+      setTimeout(closeCorrectModal, 700);
+    } catch (err) {
+      correctModalFeedback.textContent = err.message || 'No se pudo guardar.';
+      correctModalFeedback.className = 'correct-modal-feedback is-error';
+    } finally {
+      correctModalSave.disabled = false;
     }
   });
 
@@ -820,6 +1149,38 @@
     else if (fallbackMode) document.getElementById('videoModalPlayer').innerHTML = ''; // sin API no hay pauseVideo: se quita el iframe
   }
 
+  // Dos líneas en forma de frase, sin nombres de campo: la primera sitúa la
+  // jugada (partido/parte/tiempo/puesto/fase de juego), la segunda cuenta
+  // qué pasó (jugador — mano, tipo — resultado, con color). "Fase de
+  // juego" no existe en los CSV de portero — se cae sola del
+  // filter(Boolean), igual que "Puesto" cuando falta. Separada de
+  // openVideoModal para poder volver a pintarla sin reiniciar el vídeo
+  // justo después de guardar una corrección (ver correctModalSave).
+  function renderVideoModalInfo(record) {
+    const resultado = record['Resultado'] || '';
+    // No todos los CSV de portero llevan la columna "Puesto" (depende de
+    // qué columnas fijas se marcaran al configurar la exportación en
+    // VideoCuts) — "Posición portero" sí es propia de cualquier exportación
+    // de portero, así que es la señal fiable de que este registro es suyo.
+    const isPortero = record[COL_PUESTO] === 'Portero' || Boolean(record[COL_GK_POSITION]);
+    const pillClass = resultPillClass(resultado, isPortero);
+    const playerLabel = record[COL_PLAYER] ? parsePlayer(record[COL_PLAYER]).label : '';
+
+    const correctedBadge = record._corrected && record._corrected.size > 0
+      ? ' <span class="corrected-badge" title="Datos corregidos desde el viewer">corregido</span>' : '';
+
+    const line1 = [record[COL_CODE], record['Parte'], record['Tiempo de partido'], record[COL_PUESTO], record['Fase de juego']]
+      .filter(Boolean).map(escapeHtml).join(' · ') + correctedBadge;
+
+    const manoTipo = [record['Mano'], record['Tipo de lanzamiento']].filter(Boolean).join(', ');
+    const line2 = [playerLabel, manoTipo].filter(Boolean).map(escapeHtml).join(' — ') +
+      (resultado ? ` <span class="result-pill ${pillClass}">${escapeHtml(resultado)}</span>` : '');
+
+    videoModalInfo.innerHTML = `
+      <div class="video-modal-info-line video-modal-info-context">${line1}</div>
+      <div class="video-modal-info-line">${line2}</div>`;
+  }
+
   // El resultado ("Gol"/"Parada"/"Fuera") se colorea distinto según la
   // pestaña: para jugadores un gol es un éxito (verde) y una parada un
   // fallo (azul, neutro); para portero es justo al revés (una parada es
@@ -891,31 +1252,7 @@
     }
     setPlayPauseIcon(true); // los dos reproductores arrancan en autoplay
 
-    // Dos líneas en forma de frase, sin nombres de campo: la primera
-    // sitúa la jugada (partido/parte/tiempo/puesto/fase de juego), la
-    // segunda cuenta qué pasó (jugador — mano, tipo — resultado, con
-    // color). "Fase de juego" no existe en los CSV de portero — se cae
-    // sola del filter(Boolean), igual que "Puesto" cuando falta.
-    const resultado = record['Resultado'] || '';
-    // No todos los CSV de portero llevan la columna "Puesto" (depende de
-    // qué columnas fijas se marcaran al configurar la exportación en
-    // VideoCuts) — "Posición portero" sí es propia de cualquier exportación
-    // de portero, así que es la señal fiable de que este registro es suyo.
-    const isPortero = record[COL_PUESTO] === 'Portero' || Boolean(record[COL_GK_POSITION]);
-    const pillClass = resultPillClass(resultado, isPortero);
-    const playerLabel = record[COL_PLAYER] ? parsePlayer(record[COL_PLAYER]).label : '';
-
-    const line1 = [record[COL_CODE], record['Parte'], record['Tiempo de partido'], record[COL_PUESTO], record['Fase de juego']]
-      .filter(Boolean).map(escapeHtml).join(' · ');
-
-    const manoTipo = [record['Mano'], record['Tipo de lanzamiento']].filter(Boolean).join(', ');
-    const line2 = [playerLabel, manoTipo].filter(Boolean).map(escapeHtml).join(' — ') +
-      (resultado ? ` <span class="result-pill ${pillClass}">${escapeHtml(resultado)}</span>` : '');
-
-    videoModalInfo.innerHTML = `
-      <div class="video-modal-info-line video-modal-info-context">${line1}</div>
-      <div class="video-modal-info-line">${line2}</div>`;
-
+    renderVideoModalInfo(record);
     currentGoalCode = GOAL_LABEL_TO_CODE[record[COL_GOAL]] || null;
 
     videoModalOverlay.hidden = false;
@@ -950,6 +1287,7 @@
       if (channelName) teamNameEl.textContent = `${team} · ${channelName}`;
 
       const records = await fetchTeamRecords(channelId, team, 'jugadores');
+      await applyCorrections(records, channelId, 'jugadores');
       if (records.length === 0) {
         panels.jugadores.innerHTML = '<div class="empty-state">Sin datos de jugadores para este equipo todavía.</div>';
       } else {
@@ -1463,6 +1801,7 @@
           renderClips(filtered);
           renderDetailTable(filtered);
         }
+        tabRefreshers.jugadores = renderStats;
 
         // Orden por defecto de las jugadas: cronológico (partido > parte >
         // tiempo) — lo usan tanto los Clips como la tabla de detalle (esta
@@ -1925,6 +2264,7 @@
       // vista del portero — el Puesto es siempre "Portero" (desplegable de
       // jugador plano, sin agrupar) y el % clave es de paradas, no de goles.
       const gkRecords = await fetchTeamRecords(channelId, team, 'portero');
+      await applyCorrections(gkRecords, channelId, 'portero');
       if (gkRecords.length === 0) {
         panels.portero.innerHTML = '<div class="empty-state">Sin datos de portero para este equipo todavía.</div>';
       } else {
@@ -2143,6 +2483,7 @@
           renderGkGoalZoneChart(gkFilteredExcept('zonaPorteria'));
           renderGkDetailTable(filtered);
         }
+        tabRefreshers.portero = renderGkStats;
 
         // ── Comparativa de porteros: solo tiene sentido si el CSV trae más
         // de un portero (p.ej. titular + suplente) — con uno solo sería la
