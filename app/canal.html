@@ -561,17 +561,25 @@
   // una sola vez por partido y se reutiliza mientras dure la sesión en esta
   // página, no hace falta volver a pedirlo cada vez que se abre el modal.
   const fieldOptionsCache = new Map();
+  // { values: { campo: [opciones] }, fieldsByEventType: { tipoDeEvento: [campos] } }
+  // — "values" valía por sí solo ANTES de que VideoCuts mandara
+  // fieldsByEventType (compat: datos publicados con esa versión anterior
+  // traían el mapa de valores directamente, sin envoltorio).
   async function getFieldOptionsFor(datasetId) {
-    if (!datasetId) return {};
+    if (!datasetId) return { values: {}, fieldsByEventType: {} };
     if (fieldOptionsCache.has(datasetId)) return fieldOptionsCache.get(datasetId);
-    let options = {};
+    let raw = {};
     try {
-      options = await fetchFieldOptions(datasetId);
+      raw = await fetchFieldOptions(datasetId);
     } catch {
       // sin catálogo no pasa nada: todos los campos caen a texto libre
     }
-    fieldOptionsCache.set(datasetId, options);
-    return options;
+    const result = {
+      values: raw.values || raw || {},
+      fieldsByEventType: raw.fieldsByEventType || null
+    };
+    fieldOptionsCache.set(datasetId, result);
+    return result;
   }
 
   // Un campo del formulario: desplegable con las opciones conocidas (+
@@ -640,16 +648,27 @@
     correctModalFields.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">Cargando opciones…</div>';
     correctModalOverlay.hidden = false;
 
-    const fieldOptions = await getFieldOptionsFor(record._datasetId);
+    const { values: fieldValues, fieldsByEventType } = await getFieldOptionsFor(record._datasetId);
     correctModalFields.innerHTML = '';
 
-    // Un campo sin valor en ESTA jugada no se ofrece para corregir — sobre
-    // todo pensado para campos que solo existen en algunas plantillas (p.ej.
-    // "Con amago", propio de 7 metros): el viewer no sabe qué campos trae la
-    // plantilla de cada tipo de evento, pero sí sabe si esta jugada en
-    // concreto tiene algo que corregir ahí o no.
+    // Qué campos se ofrecen para corregir en ESTA jugada:
+    // - Si VideoCuts mandó fieldsByEventType (publicado con una versión
+    //   reciente) y sabemos el tipo de evento de esta jugada, se usa esa
+    //   lista tal cual — así un campo que debería tener valor para ese tipo
+    //   de evento se ofrece aunque esté vacío (se olvidó rellenarlo), pero
+    //   uno que no aplica a ese tipo (p.ej. "Con amago" fuera de 7 metros)
+    //   no se ofrece aunque por lo que sea tuviera algo.
+    // - Si no (partido publicado antes de este cambio, o sin "Tipo de
+    //   evento" en el registro), se cae al criterio anterior: ofrecer solo
+    //   los campos que ya tienen algún valor.
+    const eventTypeName = record['Tipo de evento'];
+    const applicableFields = (fieldsByEventType && eventTypeName) ? fieldsByEventType[eventTypeName] : null;
+
     const correctable = new Set(
-      Object.keys(record).filter((f) => !f.startsWith('_') && !CORRECTION_EXCLUDED_FIELDS.has(f) && record[f])
+      Object.keys(record).filter((f) => {
+        if (f.startsWith('_') || CORRECTION_EXCLUDED_FIELDS.has(f)) return false
+        return applicableFields ? applicableFields.includes(f) : !!record[f]
+      })
     );
 
     for (const rowFields of CORRECTION_FIELD_LAYOUT) {
@@ -658,7 +677,7 @@
       const row = document.createElement('div');
       row.className = 'correct-field-row';
       for (const field of present) {
-        row.appendChild(buildFieldRow(field, record[field], fieldOptions[field]));
+        row.appendChild(buildFieldRow(field, record[field], fieldValues[field]));
         correctable.delete(field);
       }
       correctModalFields.appendChild(row);
@@ -668,7 +687,7 @@
     for (const field of correctable) {
       const row = document.createElement('div');
       row.className = 'correct-field-row';
-      row.appendChild(buildFieldRow(field, record[field], fieldOptions[field]));
+      row.appendChild(buildFieldRow(field, record[field], fieldValues[field]));
       correctModalFields.appendChild(row);
     }
 
