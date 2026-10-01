@@ -548,6 +548,14 @@
   const OTHER_OPTION = '__otro__';
   let correctModalRecord = null;
   let correctModalRole = null;
+  // renderStats()/renderGkStats() recalculan TODO (KPIs, mapas de zona,
+  // comparativa, clips, tabla) a partir de "records"/"gkRecords" y los
+  // filtros activos — son funciones locales a cada pestaña (dentro de su
+  // propio "if (records.length === 0) {...} else {...}"), así que no se
+  // pueden llamar desde aquí directamente. Cada pestaña se apunta sola aquí
+  // en cuanto se monta, para que guardar una corrección pueda refrescar la
+  // que esté activa sin perder los filtros aplicados ni recargar la página.
+  const tabRefreshers = { jugadores: null, portero: null };
 
   // Catálogo de opciones por partido (ver dataset_field_options) — se pide
   // una sola vez por partido y se reutiliza mientras dure la sesión en esta
@@ -701,6 +709,7 @@
       for (const c of changes) { record[c.field] = c.newValue; correctedFields.add(c.field); }
       record._corrected = correctedFields;
       renderVideoModalInfo(record); // refresca la info del modal de vídeo sin reiniciar el vídeo
+      tabRefreshers[correctModalRole]?.(); // y los mapas/estadísticas/clips de la pestaña, con los filtros tal como estaban
       correctModalFeedback.textContent = 'Guardado.';
       setTimeout(closeCorrectModal, 700);
     } catch (err) {
@@ -1773,6 +1782,7 @@
           renderClips(filtered);
           renderDetailTable(filtered);
         }
+        tabRefreshers.jugadores = renderStats;
 
         // Orden por defecto de las jugadas: cronológico (partido > parte >
         // tiempo) — lo usan tanto los Clips como la tabla de detalle (esta
@@ -2454,6 +2464,7 @@
           renderGkGoalZoneChart(gkFilteredExcept('zonaPorteria'));
           renderGkDetailTable(filtered);
         }
+        tabRefreshers.portero = renderGkStats;
 
         // ── Comparativa de porteros: solo tiene sentido si el CSV trae más
         // de un portero (p.ej. titular + suplente) — con uno solo sería la
