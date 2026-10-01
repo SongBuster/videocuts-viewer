@@ -164,6 +164,9 @@
   .correct-modal-header h2 { font-size: 16px; }
   .correct-modal-hint { color: var(--text-muted); font-size: 12px; line-height: 1.5; margin: 0; }
   .correct-modal-fields { display: flex; flex-direction: column; gap: 12px; }
+  .correct-field-row { display: flex; gap: 12px; }
+  .correct-field-row .correct-field { flex: 1; min-width: 0; }
+  @media (max-width: 480px) { .correct-field-row { flex-direction: column; gap: 12px; } }
   .correct-field label {
     display: block; color: var(--text-secondary); font-size: 11.5px; font-weight: 600;
     text-transform: uppercase; letter-spacing: .03em; margin-bottom: 5px;
@@ -301,11 +304,32 @@
   // Columnas técnicas/identificadoras: no tiene sentido "corregirlas" desde
   // el viewer (son ids, o ya se corrigen indirectamente cambiando otra
   // cosa) — se excluyen del formulario de corrección (ver openCorrectModal).
+  // "Equipo" también: esta página ya está fija a un equipo (?equipo= en la
+  // URL), no se puede cambiar desde aquí.
   const CORRECTION_EXCLUDED_FIELDS = new Set([
-    COL_CODE, COL_EVENT_ID, 'ID del partido (técnico)',
+    COL_CODE, COL_EVENT_ID, 'ID del partido (técnico)', 'Equipo',
     COL_YOUTUBE, COL_CLIP_START, COL_CLIP_END,
     COL_HOSTED_URL, COL_HOSTED_START, COL_HOSTED_END
   ])
+
+  // Orden/agrupación del formulario de corrección — no el orden en que
+  // vienen las columnas del CSV, que no es el más natural para leerlo aquí
+  // (p.ej. "Parte" y "Tiempo de partido" van juntos, "Jugador" y "Puesto"
+  // también). Cada fila puede llevar uno o dos campos (se ven en la misma
+  // línea). Un campo que no aparezca aquí (de una plantilla nueva, p.ej.)
+  // simplemente se añade al final, en vez de desaparecer.
+  const CORRECTION_FIELD_LAYOUT = [
+    ['Tipo de evento'],
+    ['Parte', 'Tiempo de partido'],
+    [COL_PLAYER, COL_PUESTO],
+    ['Resultado'],
+    [COL_POSITION, COL_GOAL],
+    ['Mano', 'Tipo de lanzamiento'],
+    ['Fase de juego'],
+    ['Con amago'],
+    [COL_GK_POSITION, 'Lanzamiento 7M'],
+    ['Contraataque', COL_GK_STANCE]
+  ]
 
   // Pide las correcciones ya guardadas de un canal+rol y las superpone en
   // memoria sobre los registros publicados (mutando cada fila in-place, así
@@ -610,9 +634,38 @@
 
     const fieldOptions = await getFieldOptionsFor(record._datasetId);
     correctModalFields.innerHTML = '';
-    for (const field of Object.keys(record)) {
-      if (field.startsWith('_') || CORRECTION_EXCLUDED_FIELDS.has(field)) continue;
-      correctModalFields.appendChild(buildFieldRow(field, record[field], fieldOptions[field]));
+
+    // Un campo sin valor en ESTA jugada no se ofrece para corregir — sobre
+    // todo pensado para campos que solo existen en algunas plantillas (p.ej.
+    // "Con amago", propio de 7 metros): el viewer no sabe qué campos trae la
+    // plantilla de cada tipo de evento, pero sí sabe si esta jugada en
+    // concreto tiene algo que corregir ahí o no.
+    const correctable = new Set(
+      Object.keys(record).filter((f) => !f.startsWith('_') && !CORRECTION_EXCLUDED_FIELDS.has(f) && record[f])
+    );
+
+    for (const rowFields of CORRECTION_FIELD_LAYOUT) {
+      const present = rowFields.filter((f) => correctable.has(f));
+      if (present.length === 0) continue;
+      const row = document.createElement('div');
+      row.className = 'correct-field-row';
+      for (const field of present) {
+        row.appendChild(buildFieldRow(field, record[field], fieldOptions[field]));
+        correctable.delete(field);
+      }
+      correctModalFields.appendChild(row);
+    }
+    // Cualquier campo con valor que no estuviera previsto en el orden de
+    // arriba (plantilla nueva, p.ej.) se añade igual al final, uno por fila.
+    for (const field of correctable) {
+      const row = document.createElement('div');
+      row.className = 'correct-field-row';
+      row.appendChild(buildFieldRow(field, record[field], fieldOptions[field]));
+      correctModalFields.appendChild(row);
+    }
+
+    if (correctModalFields.children.length === 0) {
+      correctModalFields.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">No hay ningún campo con valor que corregir en esta jugada.</div>';
     }
   }
 
